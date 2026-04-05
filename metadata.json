@@ -1,0 +1,5 @@
+{
+  "name": "TacU- NS",
+  "description": "Professional cybersecurity dashboard with threat intelligence, network analysis, and AI-powered troubleshooting.",
+  "requestFramePermissions": ["geolocation"]
+}

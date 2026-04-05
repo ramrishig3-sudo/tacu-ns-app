@@ -1,0 +1,29 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Vercel
+.vercel/
+
+# Android / Capacitor
+android/app/build/
+android/.gradle/
+android/build/
+*.apk
+*.aab
+*.keystore
+
+# Firebase
+firebase-service-account.json
+google-services.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

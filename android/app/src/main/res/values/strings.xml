@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TacU- NS</string>
+    <string name="title_activity_main">TacU- NS</string>
+    <string name="package_name">com.tacu.ns</string>
+    <string name="custom_url_scheme">com.tacu.ns</string>
+</resources>
