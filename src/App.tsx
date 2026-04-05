@@ -1,41 +1,57 @@
-import React, { useState, useEffect } from "react";
-import { 
-  Shield, 
-  Network, 
-  Wifi, 
-  Mail, 
-  Terminal, 
-  Cpu, 
-  Settings, 
-  Menu, 
-  X,
-  LayoutDashboard,
+import React, { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import {
+  Shield,
+  Network,
+  Wifi,
+  Mail,
+  Terminal,
+  Cpu,
+  Settings,
+  Menu,
   Search,
-  AlertTriangle,
-  CheckCircle,
-  FileText,
   MessageSquare,
   Clock,
   Sun,
   Moon,
-  LockKeyhole
+  LockKeyhole,
+  LayoutDashboard,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "./lib/utils";
-import Dashboard from "./components/dashboard/Dashboard";
-import ThreatIntel from "./components/threat/ThreatIntel";
-import NetworkAnalyzer from "./components/network/NetworkAnalyzer";
-import Toolkit from "./components/toolkit/Toolkit";
-import AIAssistant from "./components/ai/AIAssistant";
-import EmailAnalyzer from "./components/email/EmailAnalyzer";
-import ScheduledScans from "./components/toolkit/ScheduledScans";
-import VPNModule from "./components/vpn/VPNModule";
-import WifiAnalyzer from "./components/wifi/WifiAnalyzer";
+import { App as CapApp } from "@capacitor/app";
+
+// ─── Lazy-load heavy components so the first tab loads instantly ───────────────
+const Dashboard      = lazy(() => import("./components/dashboard/Dashboard"));
+const ThreatIntel    = lazy(() => import("./components/threat/ThreatIntel"));
+const NetworkAnalyzer = lazy(() => import("./components/network/NetworkAnalyzer"));
+const Toolkit        = lazy(() => import("./components/toolkit/Toolkit"));
+const AIAssistant    = lazy(() => import("./components/ai/AIAssistant"));
+const EmailAnalyzer  = lazy(() => import("./components/email/EmailAnalyzer"));
+const ScheduledScans = lazy(() => import("./components/toolkit/ScheduledScans"));
+const VPNModule      = lazy(() => import("./components/vpn/VPNModule"));
+const WifiAnalyzer   = lazy(() => import("./components/wifi/WifiAnalyzer"));
 
 type Tab = "dashboard" | "threat" | "network" | "wifi" | "vpn" | "email" | "toolkit" | "ai" | "scheduled" | "settings";
 
+const TAB_HISTORY_KEY = "tacu_tab_history";
+
+// A simple loading spinner shown while lazy component loads
+function TabLoader() {
+  return (
+    <div className="flex items-center justify-center h-40">
+      <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+
+  // ─── Navigation History Stack (for Android back button) ────────────────────
+  // Keeps a stack of tabs visited so back button goes to previous tab,
+  // and only exits the app when back is pressed on the first/root screen.
+  const [tabHistory, setTabHistory] = useState<Tab[]>(["dashboard"]);
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     const saved = localStorage.getItem("sidebarOpen");
     return saved !== null ? JSON.parse(saved) : true;
@@ -47,19 +63,17 @@ export default function App() {
     return saved !== null ? JSON.parse(saved) : true;
   });
 
+  // ─── Persist preferences ──────────────────────────────────────────────────
   useEffect(() => {
     localStorage.setItem("sidebarOpen", JSON.stringify(isSidebarOpen));
   }, [isSidebarOpen]);
 
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(isDarkMode));
-    if (isDarkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    document.documentElement.classList.toggle("dark", isDarkMode);
   }, [isDarkMode]);
 
+  // ─── Responsive detection ─────────────────────────────────────────────────
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 1024;
@@ -71,65 +85,108 @@ export default function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // ─── Android Hardware Back Button Handler ─────────────────────────────────
+  // Uses Capacitor's App plugin to intercept the Android back button.
+  // If there's history → go back to previous tab.
+  // If on root (dashboard with no history) → exit app.
+  useEffect(() => {
+    let removeListener: (() => void) | null = null;
+
+    const setupBackHandler = async () => {
+      const listenerHandle = await CapApp.addListener("backButton", () => {
+        // Close mobile menu first if open
+        if (isMobileMenuOpen) {
+          setIsMobileMenuOpen(false);
+          return;
+        }
+
+        // Go back in tab history if available
+        setTabHistory((prev) => {
+          if (prev.length > 1) {
+            const newHistory = prev.slice(0, -1);
+            const previousTab = newHistory[newHistory.length - 1];
+            setActiveTab(previousTab);
+            return newHistory;
+          } else {
+            // No more history → exit app
+            CapApp.exitApp();
+            return prev;
+          }
+        });
+      });
+
+      removeListener = () => listenerHandle.remove();
+    };
+
+    setupBackHandler();
+    return () => {
+      removeListener?.();
+    };
+  }, [isMobileMenuOpen]);
+
+  // ─── Navigate to a tab (pushes to history stack) ─────────────────────────
+  const navigateTo = useCallback((tab: Tab) => {
+    setActiveTab((current) => {
+      if (current === tab) return current; // same tab, no change
+      setTabHistory((prev) => {
+        // Avoid duplicate consecutive entries
+        if (prev[prev.length - 1] === tab) return prev;
+        return [...prev, tab];
+      });
+      return tab;
+    });
+    if (window.innerWidth < 1024) setIsMobileMenuOpen(false);
+  }, []);
+
   const navItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "threat", label: "Threat Intel", icon: Shield },
-    { id: "network", label: "Network", icon: Network },
-    { id: "wifi", label: "WiFi Analyzer", icon: Wifi },
-    { id: "vpn", label: "Privacy Shield", icon: LockKeyhole },
-    { id: "email", label: "Email Header", icon: Mail },
-    { id: "toolkit", label: "Toolkit", icon: Terminal },
-    { id: "ai", label: "AI Assistant", icon: MessageSquare },
-    { id: "scheduled", label: "Scheduled Scans", icon: Clock },
-    { id: "settings", label: "Settings", icon: Settings },
+    { id: "dashboard",  label: "Dashboard",      icon: LayoutDashboard },
+    { id: "threat",     label: "Threat Intel",   icon: Shield },
+    { id: "network",    label: "Network",         icon: Network },
+    { id: "wifi",       label: "WiFi Analyzer",  icon: Wifi },
+    { id: "vpn",        label: "Privacy Shield", icon: LockKeyhole },
+    { id: "email",      label: "Email Header",   icon: Mail },
+    { id: "toolkit",    label: "Toolkit",        icon: Terminal },
+    { id: "ai",         label: "AI Assistant",   icon: MessageSquare },
+    { id: "scheduled",  label: "Scheduled Scans",icon: Clock },
+    { id: "settings",   label: "Settings",       icon: Settings },
   ];
 
   const toggleSidebar = () => {
     if (isMobile) {
-      setIsMobileMenuOpen(!isMobileMenuOpen);
+      setIsMobileMenuOpen((v) => !v);
     } else {
-      setIsSidebarOpen(!isSidebarOpen);
+      setIsSidebarOpen((v) => !v);
     }
   };
 
   return (
-    <div className={cn(
-      "h-screen flex transition-colors duration-300 relative overflow-hidden cyber-grid",
-      isDarkMode ? "bg-[#050505] text-white" : "bg-slate-50 text-slate-900"
-    )}>
-      {/* Atmospheric Background */}
+    <div
+      className={cn(
+        "h-screen flex transition-colors duration-300 relative overflow-hidden cyber-grid",
+        isDarkMode ? "bg-[#050505] text-white" : "bg-slate-50 text-slate-900"
+      )}
+    >
+      {/* ── Atmospheric Background (reduced animation cost) ─────────────── */}
+      {/* Using CSS animation instead of Framer Motion infinite loops to save CPU */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <motion.div 
-          animate={{ 
-            scale: [1, 1.2, 1],
-            opacity: [0.15, 0.25, 0.15],
-            x: [0, 50, 0],
-            y: [0, -30, 0]
-          }}
-          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        <div
           className={cn(
-            "absolute top-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full blur-[120px]",
-            isDarkMode ? "bg-blue-600/30" : "bg-blue-400/20"
-          )} 
+            "absolute top-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full blur-[120px] animate-pulse-slow",
+            isDarkMode ? "bg-blue-600/20" : "bg-blue-400/15"
+          )}
         />
-        <motion.div 
-          animate={{ 
-            scale: [1.2, 1, 1.2],
-            opacity: [0.1, 0.2, 0.1],
-            x: [0, -40, 0],
-            y: [0, 60, 0]
-          }}
-          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+        <div
           className={cn(
-            "absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full blur-[120px]",
-            isDarkMode ? "bg-purple-600/20" : "bg-purple-400/10"
-          )} 
+            "absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full blur-[120px] animate-pulse-slower",
+            isDarkMode ? "bg-purple-600/15" : "bg-purple-400/10"
+          )}
         />
         {isDarkMode && (
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay" />
+          <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay bg-noise" />
         )}
       </div>
-      {/* Mobile Backdrop */}
+
+      {/* ── Mobile Backdrop ───────────────────────────────────────────────── */}
       <AnimatePresence>
         {isMobile && isMobileMenuOpen && (
           <motion.div
@@ -142,12 +199,12 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
+      {/* ── Sidebar ───────────────────────────────────────────────────────── */}
       <motion.aside
         initial={false}
-        animate={{ 
-          width: isMobile ? 280 : (isSidebarOpen ? 260 : 80),
-          x: (isMobile && !isMobileMenuOpen) ? -280 : 0
+        animate={{
+          width: isMobile ? 280 : isSidebarOpen ? 260 : 80,
+          x: isMobile && !isMobileMenuOpen ? -280 : 0,
         }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className={cn(
@@ -163,7 +220,7 @@ export default function App() {
           </div>
           <AnimatePresence>
             {(isMobile || isSidebarOpen) && (
-              <motion.span 
+              <motion.span
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
@@ -180,21 +237,25 @@ export default function App() {
             {navItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id as Tab);
-                  if (window.innerWidth < 1024) setIsMobileMenuOpen(false);
-                }}
+                onClick={() => navigateTo(item.id as Tab)}
                 className={cn(
                   "w-full flex items-center gap-2.5 md:gap-3 p-2 md:p-2.5 rounded-lg md:rounded-xl transition-all duration-200 group",
-                  activeTab === item.id 
-                    ? (isDarkMode ? "bg-blue-600/20 text-blue-400 border border-blue-500/20" : "bg-blue-50 text-blue-600")
-                    : (isDarkMode ? "text-slate-400 hover:bg-white/5 hover:text-white" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900")
+                  activeTab === item.id
+                    ? isDarkMode
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-500/20"
+                      : "bg-blue-50 text-blue-600"
+                    : isDarkMode
+                    ? "text-slate-400 hover:bg-white/5 hover:text-white"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                 )}
               >
-                <item.icon size={20} className={cn(
-                  "transition-transform group-hover:scale-110 shrink-0",
-                  activeTab === item.id && "text-blue-500"
-                )} />
+                <item.icon
+                  size={20}
+                  className={cn(
+                    "transition-transform group-hover:scale-110 shrink-0",
+                    activeTab === item.id && "text-blue-500"
+                  )}
+                />
                 <AnimatePresence>
                   {(isMobile || isSidebarOpen) && (
                     <motion.span
@@ -208,7 +269,7 @@ export default function App() {
                   )}
                 </AnimatePresence>
                 {activeTab === item.id && (isMobile || isSidebarOpen) && (
-                  <motion.div 
+                  <motion.div
                     layoutId="active-pill"
                     className="ml-auto w-1 h-1 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"
                   />
@@ -220,7 +281,7 @@ export default function App() {
 
         <div className="p-3 mt-auto hidden lg:block shrink-0 border-t border-white/5">
           <button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            onClick={() => setIsSidebarOpen((v) => !v)}
             className={cn(
               "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all",
               isDarkMode ? "text-slate-400 hover:bg-white/5" : "text-slate-500 hover:bg-slate-100"
@@ -234,52 +295,62 @@ export default function App() {
         </div>
       </motion.aside>
 
-      {/* Main Content */}
+      {/* ── Main Content ──────────────────────────────────────────────────── */}
       <main className="flex-1 min-w-0 h-full flex flex-col">
-        <header className={cn(
-          "h-14 md:h-16 border-b flex items-center justify-between px-4 lg:px-6 backdrop-blur-3xl shrink-0 z-40",
-          isDarkMode ? "bg-black/40 border-white/5" : "bg-white/80 border-slate-200"
-        )}>
+        <header
+          className={cn(
+            "h-14 md:h-16 border-b flex items-center justify-between px-4 lg:px-6 backdrop-blur-3xl shrink-0 z-40",
+            isDarkMode ? "bg-black/40 border-white/5" : "bg-white/80 border-slate-200"
+          )}
+        >
           <div className="flex items-center gap-3">
             <button
               onClick={toggleSidebar}
               className={cn(
                 "p-1.5 md:p-2 rounded-lg md:rounded-xl border transition-all lg:hidden",
-                isDarkMode ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-slate-100 border-slate-200 hover:bg-slate-200"
+                isDarkMode
+                  ? "bg-white/5 border-white/10 hover:bg-white/10"
+                  : "bg-slate-100 border-slate-200 hover:bg-slate-200"
               )}
             >
               <Menu size={18} />
             </button>
             <h1 className="text-base md:text-lg font-bold capitalize hidden sm:block tracking-tight">
-              {navItems.find(i => i.id === activeTab)?.label || activeTab.replace("-", " ")}
+              {navItems.find((i) => i.id === activeTab)?.label || activeTab.replace("-", " ")}
             </h1>
           </div>
 
           <div className="flex items-center gap-2 lg:gap-4">
-            <div className={cn(
-              "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border",
-              isDarkMode ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200"
-            )}>
+            <div
+              className={cn(
+                "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border",
+                isDarkMode ? "bg-white/5 border-white/10" : "bg-slate-100 border-slate-200"
+              )}
+            >
               <Search size={16} className="text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Search tools..." 
+              <input
+                type="text"
+                placeholder="Search tools..."
                 onChange={(e) => {
                   const val = e.target.value.toLowerCase();
                   if (val.length > 1) {
-                    const match = navItems.find(item => item.label.toLowerCase().includes(val) || item.id.includes(val));
-                    if (match) setActiveTab(match.id as Tab);
+                    const match = navItems.find(
+                      (item) => item.label.toLowerCase().includes(val) || item.id.includes(val)
+                    );
+                    if (match) navigateTo(match.id as Tab);
                   }
                 }}
                 className="bg-transparent border-none outline-none text-xs w-24 lg:w-40"
               />
             </div>
 
-            <button 
-              onClick={() => setIsDarkMode(!isDarkMode)}
+            <button
+              onClick={() => setIsDarkMode((v) => !v)}
               className={cn(
                 "p-2 rounded-xl border transition-all",
-                isDarkMode ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-slate-100 border-slate-200 hover:bg-slate-200"
+                isDarkMode
+                  ? "bg-white/5 border-white/10 hover:bg-white/10"
+                  : "bg-slate-100 border-slate-200 hover:bg-slate-200"
               )}
             >
               {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
@@ -293,67 +364,85 @@ export default function App() {
           </div>
         </header>
 
+        {/* ── Tab Content ─────────────────────────────────────────────────── */}
+        {/*
+          PERFORMANCE NOTE:
+          - VPN is always mounted (display:none when hidden) so its connection
+            state & timer persist across tab switches.
+          - All other tabs use React.lazy + Suspense so they only load
+            their JS chunk the first time you visit them.
+          - AnimatePresence duration reduced to 150ms for snappier feel.
+        */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-          {/* VPN stays always mounted so connection state/timer persists across tab switches */}
-          <div style={{ display: activeTab === "vpn" ? "block" : "none" }}>
-            <VPNModule />
-          </div>
 
-          <AnimatePresence mode="wait">
-            {activeTab !== "vpn" && (
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.2 }}
-            >
-              {activeTab === "dashboard" && <Dashboard />}
-              {activeTab === "threat" && <ThreatIntel />}
-              {activeTab === "network" && <NetworkAnalyzer />}
-              {activeTab === "toolkit" && <Toolkit />}
-              {activeTab === "ai" && <AIAssistant />}
-              {activeTab === "email" && <EmailAnalyzer />}
-              {activeTab === "wifi" && <WifiAnalyzer />}
-              {activeTab === "scheduled" && <ScheduledScans />}
-              {activeTab === "settings" && (
-                <div className="cyber-card">
-                  <h2 className="cyber-title mb-4 md:mb-6">Settings & Configuration</h2>
-                  <div className="space-y-6 md:space-y-8">
-                    <section>
-                      <h3 className="cyber-subtitle mb-3 md:mb-4 flex items-center gap-2">
-                        <Cpu size={18} className="text-blue-500" />
-                        System Preferences
-                      </h3>
-                      <div className="flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl bg-white/5 border border-white/10">
-                        <div>
-                          <p className="font-bold text-sm md:text-base">Dark Mode</p>
-                          <p className="cyber-text-s">Toggle between light and dark themes</p>
+            {/* VPN — always mounted, hidden with CSS */}
+            <Suspense fallback={<TabLoader />}>
+              <div style={{ display: activeTab === "vpn" ? "block" : "none" }}>
+                <VPNModule />
+              </div>
+            </Suspense>
+
+            {/* All other tabs — rendered only when active */}
+            <AnimatePresence mode="wait">
+              {activeTab !== "vpn" && (
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.15 }}   // faster than old 0.2s
+                >
+                  <Suspense fallback={<TabLoader />}>
+                    {activeTab === "dashboard"  && <Dashboard />}
+                    {activeTab === "threat"     && <ThreatIntel />}
+                    {activeTab === "network"    && <NetworkAnalyzer />}
+                    {activeTab === "toolkit"    && <Toolkit />}
+                    {activeTab === "ai"         && <AIAssistant />}
+                    {activeTab === "email"      && <EmailAnalyzer />}
+                    {activeTab === "wifi"       && <WifiAnalyzer />}
+                    {activeTab === "scheduled"  && <ScheduledScans />}
+                    {activeTab === "settings"   && (
+                      <div className="cyber-card">
+                        <h2 className="cyber-title mb-4 md:mb-6">Settings &amp; Configuration</h2>
+                        <div className="space-y-6 md:space-y-8">
+                          <section>
+                            <h3 className="cyber-subtitle mb-3 md:mb-4 flex items-center gap-2">
+                              <Cpu size={18} className="text-blue-500" />
+                              System Preferences
+                            </h3>
+                            <div className="flex items-center justify-between p-3 md:p-4 rounded-xl md:rounded-2xl bg-white/5 border border-white/10">
+                              <div>
+                                <p className="font-bold text-sm md:text-base">Dark Mode</p>
+                                <p className="cyber-text-s">Toggle between light and dark themes</p>
+                              </div>
+                              <button
+                                onClick={() => setIsDarkMode((v) => !v)}
+                                className={cn(
+                                  "w-10 h-5 md:w-12 md:h-6 rounded-full transition-all relative",
+                                  isDarkMode ? "bg-blue-600" : "bg-slate-700"
+                                )}
+                              >
+                                <div
+                                  className={cn(
+                                    "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all",
+                                    isDarkMode ? "right-0.5" : "left-0.5"
+                                  )}
+                                />
+                              </button>
+                            </div>
+                          </section>
                         </div>
-                        <button 
-                          onClick={() => setIsDarkMode(!isDarkMode)}
-                          className={cn(
-                            "w-10 h-5 md:w-12 md:h-6 rounded-full transition-all relative",
-                            isDarkMode ? "bg-blue-600" : "bg-slate-700"
-                          )}
-                        >
-                          <div className={cn(
-                            "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all",
-                            isDarkMode ? "right-0.5" : "left-0.5"
-                          )} />
-                        </button>
                       </div>
-                    </section>
-                  </div>
-                </div>
+                    )}
+                  </Suspense>
+                </motion.div>
               )}
-            </motion.div>
-            )}
-          </AnimatePresence>
+            </AnimatePresence>
+
+          </div>
         </div>
-      </div>
-    </main>
-  </div>
+      </main>
+    </div>
   );
 }

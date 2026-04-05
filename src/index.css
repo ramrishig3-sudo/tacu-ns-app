@@ -95,3 +95,24 @@
     @apply px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest border;
   }
 }
+
+/* ── Performance: CSS-only background animations (no Framer overhead) ──────── */
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.15; transform: scale(1) translate(0, 0); }
+  50%       { opacity: 0.25; transform: scale(1.15) translate(30px, -20px); }
+}
+
+@keyframes pulse-slower {
+  0%, 100% { opacity: 0.10; transform: scale(1.1) translate(0, 0); }
+  50%       { opacity: 0.20; transform: scale(1) translate(-25px, 35px); }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 20s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.animate-pulse-slower {
+  animation: pulse-slower 28s ease-in-out infinite;
+  will-change: opacity, transform;
+}

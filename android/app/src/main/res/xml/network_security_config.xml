@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network Security Config for TacU-NS Android App
+    Allows the Capacitor WebView to communicate with the Railway backend.
+    Android 9 (API 28)+ restricts cleartext traffic by default.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Trust the system's built-in CA certificates (covers railway.app, ipinfo.io, etc.) -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Explicitly trust the Railway production backend -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">railway.app</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- Allow local dev server if needed during development -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
