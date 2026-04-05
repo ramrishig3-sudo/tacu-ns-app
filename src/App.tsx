@@ -15,6 +15,11 @@ import {
   Moon,
   LockKeyhole,
   LayoutDashboard,
+  Info,
+  FileText,
+  X,
+  ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "./lib/utils";
@@ -46,6 +51,8 @@ function TabLoader() {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
 
   // ─── Navigation History Stack (for Android back button) ────────────────────
   // Keeps a stack of tabs visited so back button goes to previous tab,
@@ -432,6 +439,46 @@ export default function App() {
                               </button>
                             </div>
                           </section>
+
+                          <section>
+                            <h3 className="cyber-subtitle mb-3 md:mb-4 flex items-center gap-2">
+                              <Info size={18} className="text-blue-500" />
+                              App Information
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                              <button
+                                onClick={() => setIsAboutModalOpen(true)}
+                                className={cn(
+                                  "flex flex-col items-start p-4 rounded-xl md:rounded-2xl border transition-all text-left group",
+                                  isDarkMode
+                                    ? "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20"
+                                    : "bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                                )}
+                              >
+                                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                  <Info className="text-blue-500" size={20} />
+                                </div>
+                                <span className="font-bold text-sm md:text-base mb-1">About TacU- NS</span>
+                                <span className="text-xs md:text-sm text-slate-500 dark:text-slate-400">Version, Developer info & details</span>
+                              </button>
+
+                              <button
+                                onClick={() => setIsPrivacyModalOpen(true)}
+                                className={cn(
+                                  "flex flex-col items-start p-4 rounded-xl md:rounded-2xl border transition-all text-left group",
+                                  isDarkMode
+                                    ? "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20"
+                                    : "bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                                )}
+                              >
+                                <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                  <ShieldCheck className="text-purple-500" size={20} />
+                                </div>
+                                <span className="font-bold text-sm md:text-base mb-1">Privacy Policy</span>
+                                <span className="text-xs md:text-sm text-slate-500 dark:text-slate-400">Data usage & compliance terms</span>
+                              </button>
+                            </div>
+                          </section>
                         </div>
                       </div>
                     )}
@@ -443,6 +490,177 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* ── Modals ────────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {isAboutModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAboutModalOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={cn(
+                "relative w-full max-w-md p-6 border rounded-2xl shadow-2xl overflow-hidden glass-card",
+                isDarkMode ? "bg-[#0a0a0a]/90 border-white/10" : "bg-white/90 border-slate-200"
+              )}
+            >
+              <button
+                onClick={() => setIsAboutModalOpen(false)}
+                className="absolute top-4 right-4 p-2 rounded-full hover:bg-white/10 transition-colors z-10"
+              >
+                <X size={20} className={isDarkMode ? "text-slate-400" : "text-slate-500"} />
+              </button>
+              
+              <div className="flex flex-col items-center text-center mt-2 relative">
+                <div className="absolute top-8 left-1/2 -translate-x-1/2 w-32 h-32 bg-blue-500/20 blur-[40px] rounded-full pointer-events-none" />
+                <div className="w-20 h-20 rounded-2xl shadow-[0_0_20px_rgba(37,99,235,0.4)] overflow-hidden border border-blue-500/30 bg-blue-900 mb-5 flex items-center justify-center relative z-10">
+                  <img src="/tacu-logo.png" alt="TacU- NS Logo" className="w-full h-full object-cover" />
+                </div>
+                <h2 className="text-2xl font-black tracking-tight mb-1 relative z-10">TacU- <span className="text-blue-500">NS</span></h2>
+                <div className="flex items-center gap-2 mb-6">
+                  <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 text-xs font-bold border border-blue-500/20">v1.0.0</span>
+                </div>
+                
+                <p className={cn("text-sm mb-8 leading-relaxed", isDarkMode ? "text-slate-300" : "text-slate-600")}>
+                  Network Security Toolkit with Threat Intelligence, AI Analysis, and VPN features.
+                </p>
+                
+                <div className={cn("w-full p-4 rounded-xl border text-left", isDarkMode ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200")}>
+                  <p className="text-xs uppercase tracking-wider font-bold mb-1 opacity-60">Developer</p>
+                  <p className="font-medium flex items-center gap-2">
+                    <Terminal size={16} className="text-blue-500" />
+                    [Your Name / Company]
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {isPrivacyModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPrivacyModalOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={cn(
+                "relative w-full max-w-2xl h-[90vh] sm:h-[80vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden border",
+                isDarkMode ? "bg-[#0a0a0a] border-white/10 text-slate-300" : "bg-white border-slate-200 text-slate-700"
+              )}
+            >
+              <div className={cn("flex items-center justify-between p-4 sm:p-6 border-b shrink-0", isDarkMode ? "border-white/10 backdrop-blur-md bg-white/5" : "border-slate-200 bg-slate-50/80")}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                    <ShieldCheck className="text-blue-500" size={24} />
+                  </div>
+                  <div>
+                    <h2 className={cn("text-lg sm:text-xl font-bold", isDarkMode ? "text-white" : "text-slate-900")}>Privacy Policy</h2>
+                    <p className="text-xs opacity-70">Last Updated: April 2026</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsPrivacyModalOpen(false)}
+                  className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-5 sm:p-8 custom-scrollbar text-sm sm:text-base leading-relaxed space-y-8">
+                <section>
+                  <h3 className={cn("text-lg font-bold mb-2", isDarkMode ? "text-blue-400" : "text-blue-600")}>1. Introduction</h3>
+                  <p>TacU- NS respects your privacy and is committed to protecting it.</p>
+                </section>
+                
+                <section>
+                  <h3 className={cn("text-lg font-bold mb-2", isDarkMode ? "text-blue-400" : "text-blue-600")}>2. Data Collection and Usage</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Most processing is done locally on device</li>
+                    <li>No personal identifiable information (PII) is collected or stored</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className={cn("text-lg font-bold mb-2", isDarkMode ? "text-blue-400" : "text-blue-600")}>3. Threat Intelligence & AI</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>URLs, IPs, headers, and queries may be sent to secure backend or third-party APIs for analysis</li>
+                    <li>Data is not linked to user identity</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className={cn("text-lg font-bold mb-2", isDarkMode ? "text-blue-400" : "text-blue-600")}>4. VPN / Privacy Shield</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>No logs of browsing history</li>
+                    <li>No DNS logging</li>
+                    <li>No traffic monitoring</li>
+                    <li>Used only for security and privacy</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className={cn("text-lg font-bold mb-2", isDarkMode ? "text-blue-400" : "text-blue-600")}>5. Data Sharing</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>No selling or sharing of user data</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className={cn("text-lg font-bold mb-2", isDarkMode ? "text-blue-400" : "text-blue-600")}>6. Permissions</h3>
+                  <ul className="list-disc pl-5 space-y-1 font-mono text-sm bg-black/10 dark:bg-white/5 p-3 rounded-lg mt-2 opacity-80 inline-block text-left w-full">
+                    <li>INTERNET</li>
+                    <li>ACCESS_NETWORK_STATE</li>
+                    <li>ACCESS_WIFI_STATE</li>
+                    <li>CHANGE_WIFI_STATE</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className={cn("text-lg font-bold mb-2", isDarkMode ? "text-blue-400" : "text-blue-600")}>7. Security</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Use encryption for all transmissions</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className={cn("text-lg font-bold mb-2", isDarkMode ? "text-blue-400" : "text-blue-600")}>8. Children's Privacy</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Not intended for users under 13</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className={cn("text-lg font-bold mb-2", isDarkMode ? "text-blue-400" : "text-blue-600")}>9. Contact</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Email: <a href="mailto:support@tacuns.net" className="text-blue-500 hover:text-blue-400 hover:underline transition-colors">support@tacuns.net</a></li>
+                  </ul>
+                </section>
+              </div>
+
+              <div className={cn("p-4 border-t flex justify-center shrink-0", isDarkMode ? "border-white/10 bg-[#0a0a0a]" : "border-slate-200 bg-white")}>
+                <a href="https://tacuns.net/privacy-policy" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white font-medium text-sm transition-all group">
+                  <span>View Full Policy Online</span>
+                  <ExternalLink size={16} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                </a>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

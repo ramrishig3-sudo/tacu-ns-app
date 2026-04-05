@@ -39,7 +39,8 @@ async function startServer() {
         origin.startsWith("ionic://") ||
         origin.startsWith("http://localhost") ||
         origin.startsWith("https://localhost") ||
-        origin.includes("railway.app");
+        origin.includes("railway.app") ||
+        origin.includes("tacuns.net");
       callback(null, allowed ? true : false);
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
