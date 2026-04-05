@@ -69,7 +69,7 @@ export default function PrivacyShield() {
     try {
       const saved = localStorage.getItem("threat_history");
       if (saved) setScanHistory(JSON.parse(saved));
-    } catch {}
+    } catch { }
   }, [fetchIpInfo]);
 
   // Run real security analysis based on IP info
@@ -217,7 +217,7 @@ export default function PrivacyShield() {
         animate={{ opacity: 1, y: 0 }}
         className="cyber-card relative overflow-hidden"
       >
-        <div className={cn("absolute top-0 right-0 w-72 h-72 blur-[120px] -mr-36 -mt-36", 
+        <div className={cn("absolute top-0 right-0 w-72 h-72 blur-[120px] -mr-36 -mt-36",
           overallRisk === "low" ? "bg-emerald-600/15" : overallRisk === "medium" ? "bg-amber-600/15" : "bg-red-600/15"
         )} />
 
@@ -226,9 +226,9 @@ export default function PrivacyShield() {
             "w-14 h-14 md:w-18 md:h-18 rounded-2xl flex items-center justify-center shadow-xl border",
             rc.border,
             overallRisk === "low" ? "bg-emerald-600/20 text-emerald-400" :
-            overallRisk === "medium" ? "bg-amber-600/20 text-amber-400" :
-            overallRisk === "high" ? "bg-red-600/20 text-red-400" :
-            "bg-slate-600/20 text-slate-400"
+              overallRisk === "medium" ? "bg-amber-600/20 text-amber-400" :
+                overallRisk === "high" ? "bg-red-600/20 text-red-400" :
+                  "bg-slate-600/20 text-slate-400"
           )}>
             <Shield size={32} />
           </div>
@@ -245,9 +245,9 @@ export default function PrivacyShield() {
             <div className={cn(
               "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5",
               overallRisk === "low" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" :
-              overallRisk === "medium" ? "bg-amber-500/10 border-amber-500/20 text-amber-400" :
-              overallRisk === "high" ? "bg-red-500/10 border-red-500/20 text-red-400" :
-              "bg-slate-500/10 border-slate-500/20 text-slate-400"
+                overallRisk === "medium" ? "bg-amber-500/10 border-amber-500/20 text-amber-400" :
+                  overallRisk === "high" ? "bg-red-500/10 border-red-500/20 text-red-400" :
+                    "bg-slate-500/10 border-slate-500/20 text-slate-400"
             )}>
               {overallRisk === "low" ? <ShieldCheck size={12} /> : overallRisk === "medium" ? <AlertTriangle size={12} /> : <ShieldAlert size={12} />}
               {overallRisk === "unknown" ? "Analyzing..." : `${overallRisk} Risk`}
@@ -373,17 +373,17 @@ export default function PrivacyShield() {
                     <div key={idx} className={cn(
                       "flex items-start gap-3 p-3 rounded-xl border",
                       rec.priority === "high" ? "bg-amber-500/5 border-amber-500/15" :
-                      rec.priority === "medium" ? "bg-blue-500/5 border-blue-500/15" :
-                      "bg-emerald-500/5 border-emerald-500/15"
+                        rec.priority === "medium" ? "bg-blue-500/5 border-blue-500/15" :
+                          "bg-emerald-500/5 border-emerald-500/15"
                     )}>
                       <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
                         rec.priority === "high" ? "bg-amber-500/20 text-amber-400" :
-                        rec.priority === "medium" ? "bg-blue-500/20 text-blue-400" :
-                        "bg-emerald-500/20 text-emerald-400"
+                          rec.priority === "medium" ? "bg-blue-500/20 text-blue-400" :
+                            "bg-emerald-500/20 text-emerald-400"
                       )}>
                         {rec.priority === "high" ? <AlertTriangle size={12} /> :
-                         rec.priority === "low" ? <CheckCircle size={12} /> :
-                         <Info size={12} />}
+                          rec.priority === "low" ? <CheckCircle size={12} /> :
+                            <Info size={12} />}
                       </div>
                       <p className="text-xs text-slate-300 leading-relaxed">{rec.text}</p>
                     </div>
@@ -415,8 +415,8 @@ export default function PrivacyShield() {
               securityChecks.filter(c => c.status === "risk").length > 0
                 ? "bg-red-500/10 border-red-500/20 text-red-400"
                 : securityChecks.filter(c => c.status === "warning").length > 0
-                ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                  ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                  : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
             )}>
               {securityChecks.filter(c => c.status === "risk").length} issues
             </span>
@@ -426,19 +426,19 @@ export default function PrivacyShield() {
               <div key={check.id} className={cn(
                 "p-4 rounded-xl border transition-all",
                 check.status === "secure" ? "bg-emerald-500/5 border-emerald-500/15" :
-                check.status === "warning" ? "bg-amber-500/5 border-amber-500/15" :
-                "bg-red-500/5 border-red-500/15"
+                  check.status === "warning" ? "bg-amber-500/5 border-amber-500/15" :
+                    "bg-red-500/5 border-red-500/15"
               )}>
                 <div className="flex items-start gap-3">
                   <div className={cn(
                     "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
                     check.status === "secure" ? "bg-emerald-500/20 text-emerald-400" :
-                    check.status === "warning" ? "bg-amber-500/20 text-amber-400" :
-                    "bg-red-500/20 text-red-400"
+                      check.status === "warning" ? "bg-amber-500/20 text-amber-400" :
+                        "bg-red-500/20 text-red-400"
                   )}>
                     {check.status === "secure" ? <CheckCircle size={16} /> :
-                     check.status === "warning" ? <AlertTriangle size={16} /> :
-                     <ShieldAlert size={16} />}
+                      check.status === "warning" ? <AlertTriangle size={16} /> :
+                        <ShieldAlert size={16} />}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -446,8 +446,8 @@ export default function PrivacyShield() {
                       <span className={cn(
                         "px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase border",
                         check.status === "secure" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" :
-                        check.status === "warning" ? "bg-amber-500/10 border-amber-500/20 text-amber-400" :
-                        "bg-red-500/10 border-red-500/20 text-red-400"
+                          check.status === "warning" ? "bg-amber-500/10 border-amber-500/20 text-amber-400" :
+                            "bg-red-500/10 border-red-500/20 text-red-400"
                       )}>{check.status}</span>
                     </div>
                     <p className="text-[11px] text-slate-400 leading-relaxed">{check.detail}</p>
@@ -479,8 +479,8 @@ export default function PrivacyShield() {
                 testingSpeed
                   ? "bg-blue-600/20 border-blue-500/40 text-blue-400"
                   : speedResult.tested
-                  ? "bg-emerald-600/20 border-emerald-500/40 text-emerald-400 hover:bg-emerald-600/30"
-                  : "bg-blue-600/20 border-blue-500/40 text-blue-400 hover:bg-blue-600/30",
+                    ? "bg-emerald-600/20 border-emerald-500/40 text-emerald-400 hover:bg-emerald-600/30"
+                    : "bg-blue-600/20 border-blue-500/40 text-blue-400 hover:bg-blue-600/30",
                 "shadow-xl", rc.glow
               )}
             >
@@ -515,8 +515,8 @@ export default function PrivacyShield() {
             <div className="flex items-start gap-3">
               <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Speed test measures the download time of a 256KB payload from the TacU- NS server. 
-                Results reflect the connection between your device and this server, not overall internet speed. 
+                Speed test measures the download time of a 256KB payload from the TacU- NS server.
+                Results reflect the connection between your device and this server, not overall internet speed.
                 For comprehensive speed testing, use services like Speedtest.net or Fast.com.
               </p>
             </div>
@@ -544,41 +544,41 @@ export default function PrivacyShield() {
               {scanHistory
                 .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                 .map((scan: any, idx: number) => (
-                <div key={idx} className={cn(
-                  "p-3 rounded-xl border flex items-center gap-3",
-                  scan.risk_level === "high" ? "bg-red-500/5 border-red-500/15" :
-                  scan.risk_level === "medium" ? "bg-amber-500/5 border-amber-500/15" :
-                  "bg-white/[0.02] border-white/5"
-                )}>
-                  <div className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-                    scan.risk_level === "high" ? "bg-red-500/20 text-red-400" :
-                    scan.risk_level === "medium" ? "bg-amber-500/20 text-amber-400" :
-                    "bg-emerald-500/20 text-emerald-400"
+                  <div key={idx} className={cn(
+                    "p-3 rounded-xl border flex items-center gap-3",
+                    scan.risk_level === "high" ? "bg-red-500/5 border-red-500/15" :
+                      scan.risk_level === "medium" ? "bg-amber-500/5 border-amber-500/15" :
+                        "bg-white/[0.02] border-white/5"
                   )}>
-                    {scan.risk_level === "high" ? <ShieldAlert size={14} /> :
-                     scan.risk_level === "medium" ? <AlertTriangle size={14} /> :
-                     <CheckCircle size={14} />}
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                      scan.risk_level === "high" ? "bg-red-500/20 text-red-400" :
+                        scan.risk_level === "medium" ? "bg-amber-500/20 text-amber-400" :
+                          "bg-emerald-500/20 text-emerald-400"
+                    )}>
+                      {scan.risk_level === "high" ? <ShieldAlert size={14} /> :
+                        scan.risk_level === "medium" ? <AlertTriangle size={14} /> :
+                          <CheckCircle size={14} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-200 font-mono">{scan.ip}</p>
+                      <p className="text-[10px] text-slate-500">
+                        Global Network: {scan.vt_malicious || 0} malicious • Community: {scan.otx_hits || 0} hits
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase border",
+                        scan.risk_level === "high" ? "bg-red-500/10 border-red-500/20 text-red-400" :
+                          scan.risk_level === "medium" ? "bg-amber-500/10 border-amber-500/20 text-amber-400" :
+                            "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                      )}>{scan.risk_level}</span>
+                      <p className="text-[9px] text-slate-600 mt-1">
+                        {new Date(scan.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-200 font-mono">{scan.ip}</p>
-                    <p className="text-[10px] text-slate-500">
-                      Global Network: {scan.vt_malicious || 0} malicious • Community: {scan.otx_hits || 0} hits
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className={cn(
-                      "px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase border",
-                      scan.risk_level === "high" ? "bg-red-500/10 border-red-500/20 text-red-400" :
-                      scan.risk_level === "medium" ? "bg-amber-500/10 border-amber-500/20 text-amber-400" :
-                      "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                    )}>{scan.risk_level}</span>
-                    <p className="text-[9px] text-slate-600 mt-1">
-                      {new Date(scan.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           )}
         </motion.div>

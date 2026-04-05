@@ -1,15 +1,22 @@
 /// <reference types="vite/client" />
 
 /**
- * CyberShield Pro — Centralized API Client
+ * TacU-NS: Network Security Pro — Centralized API Client
  * All frontend API calls MUST go through this client to ensure:
- * 1. Correct base URL for dev/production/mobile
+ * 1. Correct base URL for dev/production/mobile (Capacitor Android)
  * 2. Consistent error handling
  * 3. Request timeouts
+ *
+ * IMPORTANT: The Railway URL is hardcoded as the production fallback.
+ * This ensures the Android APK always has a valid backend URL even if
+ * VITE_API_BASE_URL was not available at build time.
  */
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+const PRODUCTION_API = "https://tacu-ns-ap-production.up.railway.app";
+
+// Use env var if available (dev), otherwise always use the production Railway server
+const API_BASE = import.meta.env.VITE_API_BASE_URL || PRODUCTION_API;
 
 const apiClient = axios.create({
   baseURL: API_BASE,

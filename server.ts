@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import axios from "axios";
@@ -24,6 +25,30 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json({ limit: "1mb" }));
+
+  // ── CORS (required for Capacitor/Android WebView) ────────
+  // Capacitor apps may send 'null', 'capacitor://localhost', or no origin at all.
+  // Using a function-based origin handler to always allow access from the app.
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      // or any localhost/capacitor origin
+      const allowed = !origin ||
+        origin === "null" ||
+        origin.startsWith("capacitor://") ||
+        origin.startsWith("ionic://") ||
+        origin.startsWith("http://localhost") ||
+        origin.startsWith("https://localhost") ||
+        origin.includes("railway.app");
+      callback(null, allowed ? true : false);
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    credentials: false, // must be false when origin is dynamic/wildcard
+  }));
+
+  // Handle preflight requests for all routes
+  app.options("*", cors());
 
   // ── Security Headers ─────────────────────────────────────
   app.use((req, res, next) => {
