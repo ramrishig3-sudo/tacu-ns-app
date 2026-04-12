@@ -1,5 +1,5 @@
 /**
- * CyberShield Pro — Push Notifications Service
+ * TacU-NS — Push Notifications Service
  * Handles Capacitor Push Notifications for Android.
  * Registers device token with backend for FCM.
  */

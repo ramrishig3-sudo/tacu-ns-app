@@ -6,43 +6,114 @@
 }
 
 @layer base {
+  :root {
+    --bg-main: #F1F5F9;
+    --bg-card: #FFFFFF;
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --border-color: #CBD5E1;
+    --primary: #2563eb;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #3b82f6;
+    --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --transition-speed: 200ms;
+  }
+
+  .dark {
+    --bg-main: #0B0F1A;
+    --bg-card: #111827;
+    --text-primary: #FFFFFF;
+    --text-secondary: #CBD5E1;
+    --border-color: #334155;
+    --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+
   html, body, #root {
     height: 100%;
     margin: 0;
     padding: 0;
     overflow: hidden;
-    overscroll-behavior: none;
+    background: var(--bg-main);
+    color: var(--text-primary);
   }
 
   body {
-    @apply antialiased;
+    @apply antialiased transition-colors;
+    transition-duration: var(--transition-speed);
   }
 }
 
 @layer utilities {
-  .glass {
-    @apply bg-white/5 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)];
-  }
-  
-  .glass-dark {
-    @apply bg-black/40 backdrop-blur-3xl border border-white/5 shadow-[0_8px_32px_0_rgba(0,0,0,0.8)];
+  .font-metric {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    @apply tracking-tight;
   }
 
-  .glass-card {
-    @apply bg-white/[0.03] backdrop-blur-xl border border-white/10 hover:bg-white/[0.06] transition-all duration-500;
+  /* ── Enterprise Card System (Balanced Scale) ── */
+  .enterprise-card {
+    @apply p-4 md:p-6 rounded-xl border transition-all relative;
+    background: var(--bg-card);
+    border-color: var(--border-color);
+    box-shadow: var(--card-shadow);
+    color: var(--text-primary);
   }
 
-  .cyber-grid {
-    background-image: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.05) 1px, transparent 0);
-    background-size: 24px 24px;
+  .enterprise-card:hover {
+    @apply border-blue-500/30;
   }
 
-  .custom-scrollbar {
-    overscroll-behavior: contain;
+  /* ── Typography Hierarchy (Giant Scale Mobile) ── */
+  .metric-giant {
+    @apply font-black tracking-tighter leading-none text-slate-900 dark:text-white;
+    font-size: clamp(52px, 12vw, 110px);
   }
 
+  .metric-large {
+    @apply font-black tracking-tighter leading-none;
+    color: var(--text-primary);
+    font-size: clamp(42px, 9vw, 92px);
+  }
+
+  .metric-medium {
+    @apply text-3xl md:text-4xl font-black tracking-tighter leading-none;
+    color: var(--text-primary);
+  }
+
+  .label-upper {
+    @apply text-[14px] md:text-[15px] font-black uppercase tracking-[0.15em] leading-none;
+    color: var(--text-secondary);
+  }
+
+  /* ── Sidebar Pillars ── */
+  .nav-pill {
+    @apply relative py-2 px-3.5 flex items-center gap-3 rounded-xl transition-all font-bold text-xs;
+  }
+
+  .nav-pill-active {
+    @apply bg-blue-600 text-white shadow-lg shadow-blue-500/10 active:scale-95;
+  }
+
+  .nav-pill-inactive {
+    @apply text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 active:scale-95;
+  }
+
+  /* ── Status Indicators ── */
+  .status-circle {
+    @apply w-8 h-8 rounded-lg flex items-center justify-center shadow-inner;
+  }
+
+  .status-circle-blue { @apply bg-blue-500/10 text-blue-500 border border-blue-500/10; }
+  .status-circle-green { @apply bg-emerald-500/10 text-emerald-500 border border-emerald-500/10; }
+  .status-circle-red { @apply bg-red-500/10 text-red-500 border border-red-500/10; }
+  .status-circle-amber { @apply bg-amber-500/10 text-amber-500 border border-amber-500/10; }
+
+  /* ── Custom Scrollbar ── */
   .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
+    height: 4px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
@@ -50,69 +121,16 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.1);
     border-radius: 10px;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.05);
   }
 
-  /* Global Responsive Scaling System */
-  .cyber-section {
-    @apply p-4 md:p-6 lg:p-8;
+  /* Hide scrollbars but keep functionality */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
-
-  .cyber-card {
-    @apply p-4 md:p-6 rounded-2xl md:rounded-3xl border border-white/5 bg-black/40 backdrop-blur-3xl shadow-[0_8px_32px_0_rgba(0,0,0,0.8)] relative overflow-hidden;
-  }
-
-  .cyber-title {
-    @apply text-xl md:text-2xl lg:text-3xl font-black tracking-tighter;
-  }
-
-  .cyber-subtitle {
-    @apply text-sm md:text-base font-bold text-slate-200;
-  }
-
-  .cyber-text-s {
-    @apply text-[10px] md:text-xs text-slate-400 font-medium;
-  }
-
-  .cyber-text-xs {
-    @apply text-[9px] md:text-[10px] text-slate-500 font-black uppercase tracking-widest;
-  }
-
-  .cyber-btn {
-    @apply px-4 py-2 md:px-6 md:py-2.5 rounded-xl md:rounded-2xl font-black uppercase tracking-widest text-[10px] md:text-xs transition-all active:scale-95 flex items-center justify-center gap-2;
-  }
-
-  .cyber-input {
-    @apply bg-black/40 border border-white/10 rounded-xl md:rounded-2xl px-4 py-2 md:py-3 text-xs md:text-sm font-medium placeholder:text-slate-600 text-white outline-none focus:border-blue-500/50 transition-all;
-  }
-
-  .cyber-badge {
-    @apply px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest border;
-  }
-}
-
-/* ── Performance: CSS-only background animations (no Framer overhead) ──────── */
-@keyframes pulse-slow {
-  0%, 100% { opacity: 0.15; transform: scale(1) translate(0, 0); }
-  50%       { opacity: 0.25; transform: scale(1.15) translate(30px, -20px); }
-}
-
-@keyframes pulse-slower {
-  0%, 100% { opacity: 0.10; transform: scale(1.1) translate(0, 0); }
-  50%       { opacity: 0.20; transform: scale(1) translate(-25px, 35px); }
-}
-
-.animate-pulse-slow {
-  animation: pulse-slow 20s ease-in-out infinite;
-  will-change: opacity, transform;
-}
-
-.animate-pulse-slower {
-  animation: pulse-slower 28s ease-in-out infinite;
-  will-change: opacity, transform;
 }

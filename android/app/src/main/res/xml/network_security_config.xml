@@ -25,4 +25,14 @@
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>
     </domain-config>
+
+    <!-- Allow common IP discovery APIs for fallbacks -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.ipify.org</domain>
+        <domain includeSubdomains="true">ipinfo.io</domain>
+        <domain includeSubdomains="true">ipapi.co</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
 </network-security-config>

@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 /**
- * CyberShield Pro — Client-side Supabase
+ * TacU-NS — Client-side Supabase
  * Uses ANON key (safe for frontend, RLS enforced).
  * Used for reading scan history on the client.
  */

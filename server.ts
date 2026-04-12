@@ -309,9 +309,9 @@ Provide a hyper-concise assessment formatted STRICTLY as a JSON object with thes
   // NEW: AI Chat Endpoint (Groq proxy — NO API key on frontend)
   // =================================================================
   app.post("/api/ai-chat", async (req, res) => {
-    const { message, mode, context } = req.body || {};
+    const { message, messages, mode, context } = req.body || {};
 
-    if (!message || typeof message !== "string") {
+    if ((!message && (!messages || messages.length === 0)) || (message && typeof message !== "string")) {
       return res.status(400).json({ success: false, error: "Message is required" });
     }
 
@@ -320,26 +320,44 @@ Provide a hyper-concise assessment formatted STRICTLY as a JSON object with thes
       return res.status(500).json({ success: false, error: "AI service not configured" });
     }
 
-    const systemInstruction = `You are TacU- NS AI, a world-class cybersecurity expert and network troubleshooter. 
-Your goal is to help users identify threats, analyze network data, and provide actionable security recommendations.
+    // --- Strict Privacy & Sanitization ---
+    // We sanitize only the content we send to the AI
+    const systemInstruction = `You are TacU- NS AI, a world-class cybersecurity expert.
+Your goal is to help users identify threats and provide actionable security recommendations.
 - Provide root cause analysis for security issues.
-- Suggest specific fix steps and CLI commands (e.g., nmap, iptables, openssl).
-- Offer two modes of explanation: Beginner (simple terms) and Expert (technical details).
-- Be concise, professional, and security-focused.
-- Format responses with clear headers and bullet points.`;
+- Suggest specific fix steps and CLI commands.
+- Offer two modes: Beginner and Expert.
+- Be concise and professional.
+- PRIVACY: Do not mention user identities. Do not store these logs.`;
 
     const modeStr = mode === "expert" ? "EXPERT" : "BEGINNER";
     const contextStr = context ? `\n[CONTEXT_DATA: ${sanitize(context).substring(0, 2000)}]` : "";
+
+    // Build the message list for Groq
+    let apiMessages = [
+      { role: "system", content: systemInstruction }
+    ];
+
+    if (messages && Array.isArray(messages)) {
+      // Limit to last 8 messages for token hygiene & privacy
+      const recentHistory = messages.slice(-8).map(m => ({
+        role: m.role === "user" ? "user" : "assistant",
+        content: sanitize(m.content).substring(0, 2000)
+      }));
+      apiMessages = [...apiMessages, ...recentHistory];
+    } else if (message) {
+      apiMessages.push({ 
+        role: "user", 
+        content: `[Mode: ${modeStr}]${contextStr}\n\n${sanitize(message).substring(0, 4000)}` 
+      });
+    }
 
     try {
       const response = await axios.post(
         "https://api.groq.com/openai/v1/chat/completions",
         {
           model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: systemInstruction },
-            { role: "user", content: `[Mode: ${modeStr}]${contextStr}\n\n${sanitize(message).substring(0, 4000)}` },
-          ],
+          messages: apiMessages,
           temperature: 0.7,
           max_tokens: 2048,
         },
@@ -356,9 +374,10 @@ Your goal is to help users identify threats, analyze network data, and provide a
       return res.json({ success: true, message: aiMessage });
     } catch (err: any) {
       console.error("[ai-chat] Groq error:", err.response?.data || err.message);
+      // USER REQUIREMENT: Show friendly message, no stack traces
       return res.json({
         success: true,
-        message: "⚠️ AI service temporarily unavailable. Please try again in a moment.",
+        message: "⚠️ AI service is temporarily unavailable. Please try again.",
       });
     }
   });
@@ -568,43 +587,74 @@ Your goal is to help users identify threats, analyze network data, and provide a
   // =================================================================
   app.get("/api/my-ip", async (req, res) => {
     try {
-      const response = await axios.get("https://ipinfo.io/json", { timeout: 10000 });
+      // 1. x-forwarded-for (first IP), 2. cf-connecting-ip, 3. x-real-ip, 4. socket addr
+      let clientIp = (req.headers["x-forwarded-for"] as string || "").split(",")[0].trim() ||
+                     (req.headers["cf-connecting-ip"] as string) ||
+                     (req.headers["x-real-ip"] as string) ||
+                     req.socket.remoteAddress || "127.0.0.1";
+
+      if (clientIp.startsWith("::ffff:")) clientIp = clientIp.substring(7);
+      if (clientIp === "::1") clientIp = "127.0.0.1";
+
+      const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}$/;
+      const isValid = clientIp && clientIp !== "127.0.0.1" && ipRegex.test(clientIp);
+
+      const lookupUrl = isValid 
+        ? `https://ipinfo.io/${clientIp}/json` 
+        : `https://ipinfo.io/json`; // Fallback to current request IP (last resort)
+
+      if (!lookupUrl) {
+        throw new Error("Client IP identification failed");
+      }
+
+      const response = await axios.get(lookupUrl, { timeout: 10000 });
       const [lat, lon] = (response.data.loc || "0,0").split(",");
+      
       res.json({
-        ip: response.data.ip,
-        city: response.data.city,
-        region: response.data.region,
-        country: response.data.country,
-        isp: response.data.org,
-        asn: response.data.org ? response.data.org.split(" ")[0] : "",
+        ip: response.data.ip || clientIp,
+        city: response.data.city || "Secured Node",
+        region: response.data.region || "Edge Context",
+        country: response.data.country || "Secured Region",
+        isp: response.data.org || "Global Mesh Node",
+        asn: response.data.org ? response.data.org.split(" ")[0] : "AS0000",
         latitude: parseFloat(lat),
         longitude: parseFloat(lon),
-        timezone: response.data.timezone,
+        timezone: response.data.timezone || "UTC",
         isVpn: false, 
         isProxy: false,
       });
     } catch (err: any) {
       console.warn("IP Lookup Failed:", err.message);
-      // Return a safe fallback rather than failing the whole UI
       res.json({
         ip: "127.0.0.1",
         city: "Unknown", region: "Unknown", country: "Unknown",
-        isp: "Local Network", latitude: 0, longitude: 0,
+        isp: "Local Access", latitude: 0, longitude: 0,
         isVpn: false, isProxy: false
       });
     }
   });
 
   // =================================================================
-  // NEW: Speed Test (measures download of a small payload)
+  // NEW: Speed Test (measures download/upload throughput)
   // =================================================================
   app.get("/api/speed-test", (req, res) => {
-    const sizeKB = Math.min(Number(req.query.size) || 256, 1024);
-    const payload = Buffer.alloc(sizeKB * 1024, "A");
+    // anti-caching
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    
+    // Support larger chunks for high-speed WiFi (up to 4MB per request)
+    const sizeMB = Math.min(Number(req.query.size) || 1, 4);
+    const payload = Buffer.alloc(Math.floor(sizeMB * 1024 * 1024), "X");
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", payload.length);
-    res.setHeader("Cache-Control", "no-cache, no-store");
     res.send(payload);
+  });
+
+  app.post("/api/speed-test/upload", (req, res) => {
+    // throughput handshake
+    res.setHeader("Cache-Control", "no-cache, no-store");
+    res.json({ success: true, received: req.headers["content-length"] });
   });
 
   // --- Vite Middleware ---

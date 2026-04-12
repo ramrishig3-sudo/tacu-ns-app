@@ -1,366 +1,317 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
-  Network, Search, Activity, Shield, Globe, Zap, AlertTriangle, 
-  CheckCircle, Loader2, Terminal, Server, Cpu, ShieldCheck, ShieldAlert,
-  WifiOff, Eye
+  Network, Search, Globe, Zap, AlertTriangle, 
+  Loader2, Server, ShieldCheck, ShieldAlert,
+  WifiOff, Eye, MapPin, RefreshCw, Settings
 } from "lucide-react";
 import axios from "axios";
+import { Geolocation } from "@capacitor/geolocation";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../../lib/utils";
 import { PortScanResult } from "../../types";
+import { NativeSettings, AndroidSettings } from "capacitor-native-settings";
+import { CapacitorWifi as WifiPlugin } from "@capgo/capacitor-wifi";
 import apiClient from "../../services/api";
+import PermissionDisclosure from "../common/PermissionDisclosure";
 
 export default function NetworkAnalyzer() {
   const [host, setHost] = useState("");
   const [scanning, setScanning] = useState(false);
   const [scanResults, setScanResults] = useState<PortScanResult[]>([]);
-  const [fingerprinting, setFingerprinting] = useState<Record<number, boolean>>({});
   const [publicIpInfo, setPublicIpInfo] = useState<any>(null);
+  const [gpsInfo, setGpsInfo] = useState<{ lat: number; lon: number; city?: string; countryCode?: string; loading: boolean; error?: boolean }>({ lat: 0, lon: 0, loading: true });
   const [loadingIp, setLoadingIp] = useState(true);
-  const [securityStatus, setSecurityStatus] = useState<{
-    vpnDetected: boolean;
-    connectionSecure: boolean;
-    dnsLeakRisk: boolean;
-    loading: boolean;
-  }>({ vpnDetected: false, connectionSecure: false, dnsLeakRisk: false, loading: true });
+  const [securityStatus, setSecurityStatus] = useState({ vpnDetected: false, connectionSecure: false, dnsLeakRisk: false, loading: true });
+  const [showDisclosure, setShowDisclosure] = useState(false);
+  const [locationDenied, setLocationDenied] = useState(false);
+  const [ssid, setSsid] = useState<string>("Scanning...");
+  const [hasConsented, setHasConsented] = useState(() =>
+    localStorage.getItem("location_disclosure_accepted") === "true"
+  );
+  const [locationSource, setLocationSource] = useState<"pending" | "gps" | "network" | "error">("pending");
 
   const commonPorts = [21, 22, 23, 25, 53, 80, 110, 143, 443, 3306, 3389, 8080];
 
-  useEffect(() => {
-    const fetchIpAndSecurity = async () => {
-      try {
-        // Use our backend endpoint for IP info
-        const res = await apiClient.get("/api/my-ip");
-        setPublicIpInfo(res.data);
-
-        // Real security detection:
-        // 1. VPN/Proxy check — cheap heuristic: check if ISP name contains VPN keywords
-        const isp = (res.data.isp || "").toLowerCase();
-        const vpnKeywords = ["vpn", "private", "relay", "proxy", "tunnel", "mullvad", "nord", "express", "surfshark", "wireguard", "cloudflare warp"];
-        const vpnDetected = vpnKeywords.some((kw) => isp.includes(kw));
-
-        // 2. Connection security — check if current page is HTTPS
-        const connectionSecure = window.location.protocol === "https:" || window.location.hostname === "localhost";
-
-        // 3. DNS leak risk — if not using VPN and on non-secure connection
-        const dnsLeakRisk = !vpnDetected && !connectionSecure;
-
-        setSecurityStatus({
-          vpnDetected,
-          connectionSecure,
-          dnsLeakRisk,
-          loading: false,
-        });
-      } catch (e) {
-        console.error("Failed to fetch public IP");
-        setSecurityStatus((prev) => ({ ...prev, loading: false }));
-      } finally {
-        setLoadingIp(false);
-      }
-    };
-    fetchIpAndSecurity();
-  }, []);
-
-  const handleScan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!host) return;
-
-    setScanning(true);
-    setScanResults([]);
-
+  const openSettings = async () => {
     try {
-      const res = await apiClient.post("/api/network/scan-ports", {
-        host,
-        ports: commonPorts
-      });
-      setScanResults(res.data.results);
-      localStorage.setItem("last_local_scan", JSON.stringify(res.data.results));
-    } catch (err) {
-      console.error("Scan failed", err);
-    } finally {
-      setScanning(false);
-    }
+      await NativeSettings.openAndroid({ option: AndroidSettings.ApplicationDetails });
+    } catch {}
   };
 
-  const handleFingerprint = async (port: number, banner: string | null, service: string) => {
-    setFingerprinting(prev => ({ ...prev, [port]: true }));
+  const fetchIpAndLocation = useCallback(async (signal?: AbortSignal) => {
+    setLoadingIp(true);
+    setGpsInfo(prev => ({ ...prev, loading: true, error: false }));
+    setLocationSource("pending");
     
-    // Enhanced real fingerprinting based on banner analysis
-    setTimeout(() => {
-      setScanResults(prev => prev.map(r => {
-        if (r.port === port) {
-          const newVulns = [...(r.vulnerabilities || [])];
-          
-          if (banner?.toLowerCase().includes("apache")) {
-            newVulns.push({ id: "CVE-2021-41773", severity: "critical", description: "Path traversal and file disclosure" });
-          } else if (banner?.toLowerCase().includes("nginx")) {
-            newVulns.push({ id: "CVE-2022-41741", severity: "medium", description: "Memory corruption in ngx_http_mp4_module" });
-          } else if (service === "SSH" && !banner) {
-            newVulns.push({ id: "INFO", severity: "low", description: "Banner grabbing failed. Possible stealth SSH or custom port." });
-          } else if (service === "MySQL") {
-            newVulns.push({ id: "CVE-2012-2122", severity: "critical", description: "Authentication bypass vulnerability" });
-          } else if (banner) {
-            newVulns.push({ id: "INFO", severity: "low", description: `Service identified: ${banner.substring(0, 50)}` });
-          } else {
-            newVulns.push({ id: "INFO", severity: "low", description: "No banner information available for deeper analysis." });
-          }
+    const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms));
 
-          return { 
-            ...r, 
-            vulnerabilities: newVulns,
-            service: banner ? `${service} (${banner.split('/')[0]})` : service 
-          };
-        }
-        return r;
-      }));
-      setFingerprinting(prev => ({ ...prev, [port]: false }));
-    }, 1500);
+    let ipData = null;
+    let gpsData: any = null;
+
+    // Phase 1: High Precision Geolocation (Ground Truth)
+    try {
+      const pos = await Promise.race([
+        Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000 }),
+        timeout(9000)
+      ]) as any;
+
+      if (signal?.aborted) return;
+
+      if (pos && pos.coords) {
+        gpsData = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        try {
+          const rev = await axios.get(
+            `https://nominatim.openstreetmap.org/reverse?lat=${gpsData.lat}&lon=${gpsData.lon}&format=json`,
+            { headers: { 'User-Agent': 'TacU-NS' }, timeout: 4000, signal: signal }
+          );
+          if (signal?.aborted) return;
+          gpsData.city = rev.data.address.city || rev.data.address.town || rev.data.address.village;
+          gpsData.countryCode = rev.data.address.country_code?.toUpperCase();
+        } catch {}
+        setGpsInfo({ ...gpsData, loading: false, error: false });
+        setLocationDenied(false);
+        setLocationSource("gps");
+      }
+    } catch (e: any) {
+      if (signal?.aborted) return;
+      if (e.message?.toLowerCase().includes("denied") || e.message?.toLowerCase().includes("permission")) {
+        setLocationDenied(true);
+      }
+      console.warn("GPS failed, falling back to network IP.");
+    }
+
+    if (signal?.aborted) return;
+
+    // Phase 2: Network Intelligence
+    try {
+      const res = await Promise.race([apiClient.get("/api/my-ip", { signal: signal }), timeout(6000)]) as any;
+      if (signal?.aborted) return;
+      ipData = res.data;
+    } catch {
+      if (signal?.aborted) return;
+       try {
+         const res = await axios.get("https://ipapi.co/json/", { timeout: 6000, signal: signal });
+         if (signal?.aborted) return;
+         ipData = { ip: res.data.ip, isp: res.data.org, city: res.data.city, countryCode: res.data.country_code, lat: res.data.latitude, lon: res.data.longitude };
+       } catch {}
+    }
+
+    if (signal?.aborted) return;
+
+    if (ipData) {
+      setPublicIpInfo(ipData);
+      const vpn = ["vpn", "proxy", "relay", "tunnel"].some(kw => (ipData.isp || "").toLowerCase().includes(kw));
+      setSecurityStatus({ vpnDetected: vpn, connectionSecure: true, dnsLeakRisk: !vpn, loading: false });
+      if (!gpsData) {
+        setGpsInfo({ lat: ipData.lat, lon: ipData.lon, city: ipData.city, countryCode: ipData.countryCode, loading: false, error: false });
+        setLocationSource("network");
+      }
+    } else if (!gpsData) {
+      setGpsInfo(prev => ({ ...prev, loading: false, error: true }));
+      setLocationSource("error");
+    }
+
+    try {
+      const { ssid: currentSsid } = await WifiPlugin.getSSID();
+      if (signal?.aborted) return;
+      setSsid(currentSsid || "Unknown Uplink");
+    } catch {
+      setSsid("Offline");
+    }
+
+    setLoadingIp(false);
+  }, []);
+
+  const handleStart = useCallback(() => {
+    if (!hasConsented) {
+      setShowDisclosure(true);
+    } else {
+      fetchIpAndLocation();
+    }
+  }, [hasConsented, fetchIpAndLocation]);
+
+  const handleDisclosureContinue = () => {
+    localStorage.setItem("location_disclosure_accepted", "true");
+    setHasConsented(true);
+    setShowDisclosure(false);
+    fetchIpAndLocation();
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (hasConsented) fetchIpAndLocation(controller.signal);
+    else setShowDisclosure(true);
+    return () => controller.abort();
+  }, [hasConsented, fetchIpAndLocation]);
+
+  const handleScan = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!host) return;
+    setScanning(true); setScanResults([]);
+    try {
+      const res = await apiClient.post("/api/network/scan-ports", { host, ports: commonPorts });
+      setScanResults(res.data.results);
+    } catch {} finally { setScanning(false); }
   };
 
   return (
-    <div className="space-y-6 md:space-y-8">
-      {/* Public IP Info */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-        <div className="lg:col-span-2 cyber-card relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/5 blur-[80px] -mr-24 -mt-24" />
-          
-          <div className="flex items-center justify-between mb-4 md:mb-6">
+    <div className="space-y-4 pb-20">
+
+      {/* ── Permission Disclosure Modal ── */}
+      <AnimatePresence>
+        {showDisclosure && (
+          <PermissionDisclosure
+            type="location"
+            onContinue={handleDisclosureContinue}
+            onDismiss={() => setShowDisclosure(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Location Denied Card ── */}
+      {locationDenied && (
+        <section className="enterprise-card border-amber-500/20 bg-amber-500/5">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-blue-600/20 flex items-center justify-center text-blue-500">
-                <Globe size={20} />
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                <Settings size={16} className="text-amber-500" />
               </div>
               <div>
-                <h3 className="cyber-subtitle !text-lg md:!text-xl">Public Network Identity</h3>
-                <p className="cyber-text-s">Your real connection details on the global web</p>
+                <p className="font-black text-xs uppercase tracking-tight text-slate-900 dark:text-white">Location Permission Required</p>
+                <p className="text-[10px] font-bold text-slate-500 mt-0.5">Location permission is required for Map Vector analysis.</p>
               </div>
             </div>
-            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-              Live Data
-            </span>
+            <button onClick={openSettings} className="px-3 py-2 bg-amber-500 text-white rounded-lg font-black text-[9px] uppercase tracking-widest active:scale-95 transition-all shrink-0">
+              Open Settings
+            </button>
           </div>
+        </section>
+      )}
 
-          {loadingIp ? (
-            <div className="flex items-center justify-center h-16 md:h-20">
-              <Loader2 className="animate-spin text-blue-500" size={24} />
-            </div>
-          ) : publicIpInfo ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-              <div className="space-y-0.5 md:space-y-1 min-w-0">
-                <p className="cyber-text-xs !text-slate-500">Public IP</p>
-                <p className="text-xs md:text-base font-black text-blue-400 break-all leading-tight">{publicIpInfo.ip}</p>
-              </div>
-              <div className="space-y-0.5 md:space-y-1 min-w-0">
-                <p className="cyber-text-xs !text-slate-500">ISP</p>
-                <p className="text-[10px] md:text-sm font-bold truncate leading-tight" title={publicIpInfo.isp}>{publicIpInfo.isp}</p>
-              </div>
-              <div className="space-y-0.5 md:space-y-1 min-w-0">
-                <p className="cyber-text-xs !text-slate-500">Location</p>
-                <p className="text-[10px] md:text-sm font-bold leading-tight">{publicIpInfo.city}, {publicIpInfo.countryCode}</p>
-              </div>
-              <div className="space-y-0.5 md:space-y-1 min-w-0">
-                <p className="cyber-text-xs !text-slate-500">ASN</p>
-                <p className="text-[10px] md:text-sm font-bold leading-tight">{publicIpInfo.asn}</p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-red-400 text-[10px] md:text-xs">Failed to load public IP information.</p>
-          )}
-        </div>
+      {/* ── Dual Identity Matrix (Compact 2-Column) ── */}
+      <div className="grid grid-cols-2 gap-4">
+        <section className="enterprise-card flex flex-col gap-4">
+          <div className="status-circle status-circle-blue w-7 h-7">
+            <Globe size={14} />
+          </div>
+          <div className="min-h-[60px]">
+            <p className="label-upper mb-1">Network ID</p>
+            <h3 className="metric-large truncate text-lg!">{loadingIp ? "Synchronizing..." : (publicIpInfo?.ip || "Offline")}</h3>
+            <p className="label-upper mt-4 opacity-40">{loadingIp ? "Fetching Node Data..." : (publicIpInfo?.isp.split(' ')[0] || "No Data")}</p>
+          </div>
+        </section>
 
-        {/* Real Security Status */}
-        <div className="cyber-card">
-          <h4 className="font-bold text-xs md:text-sm mb-3 md:mb-4 flex items-center gap-2">
-            <Shield size={16} className="text-blue-500" />
-            Security Status
-          </h4>
-          {securityStatus.loading ? (
-            <div className="flex items-center justify-center h-20">
-              <Loader2 className="animate-spin text-blue-500" size={20} />
-            </div>
-          ) : (
-            <div className="space-y-2 md:space-y-3">
-              {/* VPN Detection — REAL */}
-              <div className={cn(
-                "flex items-center justify-between p-2 md:p-2.5 rounded-lg md:rounded-xl border",
-                securityStatus.vpnDetected 
-                  ? "bg-blue-500/10 border-blue-500/20" 
-                  : "bg-amber-500/10 border-amber-500/20"
-              )}>
-                <div className="flex items-center gap-2">
-                  {securityStatus.vpnDetected ? <ShieldCheck size={16} className="text-blue-500" /> : <Eye size={16} className="text-amber-500" />}
-                  <span className="text-[10px] md:text-xs font-medium">
-                    {securityStatus.vpnDetected ? "VPN Detected" : "No VPN Detected"}
-                  </span>
-                </div>
-                <span className={cn("cyber-badge text-white border-current",
-                  securityStatus.vpnDetected ? "bg-blue-500 border-blue-500" : "bg-amber-500 border-amber-500"
-                )}>
-                  {securityStatus.vpnDetected ? "Active" : "Exposed"}
-                </span>
-              </div>
-
-              {/* Connection Security — REAL */}
-              <div className={cn(
-                "flex items-center justify-between p-2 md:p-2.5 rounded-lg md:rounded-xl border",
-                securityStatus.connectionSecure
-                  ? "bg-emerald-500/10 border-emerald-500/20"
-                  : "bg-red-500/10 border-red-500/20"
-              )}>
-                <div className="flex items-center gap-2">
-                  {securityStatus.connectionSecure ? <CheckCircle size={16} className="text-emerald-500" /> : <AlertTriangle size={16} className="text-red-500" />}
-                  <span className="text-[10px] md:text-xs font-medium">
-                    {securityStatus.connectionSecure ? "Secure Connection" : "Insecure Connection"}
-                  </span>
-                </div>
-                <span className={cn("cyber-badge text-white border-current",
-                  securityStatus.connectionSecure ? "bg-emerald-500 border-emerald-500" : "bg-red-500 border-red-500"
-                )}>
-                  {securityStatus.connectionSecure ? "HTTPS" : "HTTP"}
-                </span>
-              </div>
-
-              {/* DNS Leak Risk — REAL */}
-              <div className={cn(
-                "flex items-center justify-between p-2 md:p-2.5 rounded-lg md:rounded-xl border",
-                securityStatus.dnsLeakRisk
-                  ? "bg-red-500/10 border-red-500/20"
-                  : "bg-emerald-500/10 border-emerald-500/20"
-              )}>
-                <div className="flex items-center gap-2">
-                  {securityStatus.dnsLeakRisk ? <WifiOff size={16} className="text-red-500" /> : <ShieldCheck size={16} className="text-emerald-500" />}
-                  <span className="text-[10px] md:text-xs font-medium">
-                    {securityStatus.dnsLeakRisk ? "DNS Leak Risk" : "DNS Protected"}
-                  </span>
-                </div>
-                <span className={cn("cyber-badge text-white border-current",
-                  securityStatus.dnsLeakRisk ? "bg-red-500 border-red-500" : "bg-emerald-500 border-emerald-500"
-                )}>
-                  {securityStatus.dnsLeakRisk ? "At Risk" : "Secure"}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
+        <section className="enterprise-card flex flex-col gap-4">
+          <div className="status-circle status-circle-green w-7 h-7">
+            <MapPin size={14} />
+          </div>
+          <div className="min-h-[60px]">
+            <p className="label-upper mb-1">GPS Vector</p>
+            <h3 className="metric-large text-lg!">
+              {gpsInfo.loading
+                ? "Fetching location..."
+                : gpsInfo.error
+                ? "Location access required"
+                : gpsInfo.lat
+                ? `${gpsInfo.lat.toFixed(2)}N`
+                : "Not available"}
+            </h3>
+            <p className="label-upper mt-4 opacity-40">
+              {gpsInfo.loading
+                ? "Accessing GPS..."
+                : gpsInfo.error
+                ? "Permission denied"
+                : `${gpsInfo.city || "Unknown"} (${locationSource === "gps" ? "GPS Source" : "Network Est."})`}
+            </p>
+          </div>
+        </section>
       </div>
 
-      {/* Port Scanner — already real */}
-      <div className="cyber-card">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 md:mb-8">
-          <div>
-            <h3 className="cyber-title flex items-center gap-2">
-              <Terminal size={20} className="text-blue-500" />
-              Advanced Port Scanner
-            </h3>
-            <p className="cyber-text-s mt-1">Scan common ports on any host to identify open services</p>
-          </div>
-          
-          <form onSubmit={handleScan} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto">
-            <div className="relative flex items-center bg-white/5 border border-white/10 rounded-lg md:rounded-xl px-3 py-2 md:py-2.5 focus-within:border-blue-500/50 transition-all flex-1 lg:w-64">
-              <Server size={16} className="text-slate-500 mr-2" />
-              <input 
-                type="text" 
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                placeholder="Target Host (e.g. 127.0.0.1)" 
-                className="bg-transparent border-none outline-none text-[10px] md:text-xs w-full font-mono"
-              />
-            </div>
-            <button 
-              type="submit"
-              disabled={scanning}
-              className="cyber-btn bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white shrink-0"
-            >
-              {scanning ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
-              Scan
+      {/* ── Diagnostic Sensor Summary ── */}
+      <section className="enterprise-card bg-slate-900/5 dark:bg-white/5">
+         <div className="flex items-center justify-between mb-6 border-b border-slate-200 dark:border-white/5 pb-3">
+            <h3 className="label-upper text-blue-500 font-black">Digital Health Indicators</h3>
+            <button onClick={() => fetchIpAndLocation()} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
+               <RefreshCw size={12} className={loadingIp ? "animate-spin" : ""} />
             </button>
-          </form>
-        </div>
+         </div>
+         
+         <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="p-3 bg-white dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10">
+               <p className="label-upper text-[7px] opacity-40 mb-1">Physical SSID</p>
+               <p className="font-black text-[10px] uppercase truncate">{ssid}</p>
+            </div>
+            <div className="p-3 bg-white dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10">
+               <p className="label-upper text-[7px] opacity-40 mb-1">Network ISP</p>
+               <p className="font-black text-[10px] uppercase truncate">{publicIpInfo?.isp || "Identifying..."}</p>
+            </div>
+         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-          {commonPorts.map((port) => {
-            const result = scanResults.find(r => r.port === port);
-            return (
-              <motion.div 
-                key={port}
-                initial={false}
-                animate={{ 
-                  scale: result ? 1.01 : 1,
-                  borderColor: result ? (result.status === "open" ? "#10b981" : "#ef4444") : "rgba(255,255,255,0.1)"
-                }}
-                className={cn(
-                  "p-3 md:p-4 rounded-xl md:rounded-2xl border transition-all duration-300 flex flex-col gap-2 md:gap-3",
-                  result 
-                    ? (result.status === "open" ? "bg-emerald-500/5" : "bg-red-500/5")
-                    : "bg-white/5"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col min-w-0">
-                    <span className="cyber-text-xs !text-slate-500">Port {port}</span>
-                    <span className="text-xs md:text-base font-black truncate">{result?.service || "Unknown"}</span>
-                  </div>
-                  <div className={cn(
-                    "cyber-badge",
-                    result 
-                      ? (result.status === "open" ? "bg-emerald-500 text-white border-emerald-500" : "bg-red-500 text-white border-red-500")
-                      : "bg-slate-700 text-slate-400 border-slate-700"
-                  )}>
-                    {result ? result.status : "Pending"}
-                  </div>
-                </div>
+         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <MetricRow icon={<Eye size={12}/>} label="VPN Shield" active={securityStatus.vpnDetected} />
+            <MetricRow icon={<ShieldCheck size={12}/>} label="TLS Protocol" active={securityStatus.connectionSecure} />
+            <MetricRow icon={<WifiOff size={12}/>} label="DNS Privacy" active={!securityStatus.dnsLeakRisk} />
+         </div>
+      </section>
 
-                {result?.banner && (
-                  <div className="p-1.5 md:p-2 rounded-lg bg-black/40 border border-white/5">
-                    <p className="text-[8px] md:text-[9px] font-mono text-blue-400 truncate">{result.banner}</p>
-                  </div>
-                )}
+      {/* ── Service Reconnaissance (Re-styled Port Scanner) ── */}
+      <section className="enterprise-card">
+         <div className="flex flex-col gap-4 mb-6">
+            <div>
+               <h3 className="metric-medium">Spectral Recon</h3>
+               <p className="label-upper mt-1 opacity-60">Multiplexed port boundary assessment</p>
+            </div>
+            <form onSubmit={handleScan} className="flex gap-2">
+               <div className="flex-1 flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl">
+                  <Server size={14} className="text-slate-400" />
+                  <input type="text" value={host} onChange={(e) => setHost(e.target.value)} placeholder="Target IP" className="bg-transparent border-none outline-none text-[10px] font-black uppercase tracking-tight w-full dark:text-white" />
+               </div>
+               <button type="submit" disabled={scanning} className="px-5 py-2 bg-blue-600 rounded-xl text-white font-black uppercase tracking-widest text-[9px] shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2">
+                  {scanning ? <Loader2 size={12} className="animate-spin" /> : <Network size={12} />}
+                  Go
+               </button>
+            </form>
+         </div>
 
-                {result?.status === "open" && (
-                  <button
-                    onClick={() => handleFingerprint(port, result.banner, result.service || "Unknown")}
-                    disabled={fingerprinting[port]}
-                    className="w-full py-1 md:py-1.5 rounded-lg bg-blue-600/10 border border-blue-600/20 text-blue-400 text-[8px] md:text-[9px] font-bold uppercase tracking-widest hover:bg-blue-600/20 transition-all flex items-center justify-center gap-1 md:gap-1.5"
-                  >
-                    {fingerprinting[port] ? <Loader2 className="animate-spin" size={10} /> : <Search size={10} />}
-                    {fingerprinting[port] ? "Analyzing..." : "Fingerprint"}
-                  </button>
-                )}
-
-                {result?.vulnerabilities && result.vulnerabilities.length > 0 && (
-                  <div className="space-y-1 md:space-y-1.5">
-                    {result.vulnerabilities.map((v, idx) => (
-                      <div key={idx} className="flex items-start gap-1 md:gap-1.5 p-1 md:p-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
-                        <AlertTriangle size={10} className="text-red-500 shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <p className="text-[8px] md:text-[9px] font-bold text-red-400 truncate">{v.id}</p>
-                          <p className="text-[7px] md:text-[8px] text-slate-400 leading-tight line-clamp-2">{v.description}</p>
-                        </div>
+         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {commonPorts.map(port => {
+               const res = scanResults.find(r => r.port === port);
+               return (
+                 <div key={port} className={cn("p-2.5 rounded-xl border flex flex-col gap-2 transition-all", res ? (res.status === "open" ? "bg-emerald-500/5 border-emerald-500/20 shadow-emerald-500/5 shadow-inner" : "bg-red-500/5 border-red-500/20") : "bg-slate-50 dark:bg-black/20 border-slate-200 dark:border-white/5")}>
+                    <div className="flex justify-between items-start">
+                       <div>
+                          <p className="label-upper text-[7px] text-blue-500 mb-0.5">P{port}</p>
+                          <p className="font-black text-[9px] uppercase tracking-tighter truncate text-slate-800 dark:text-slate-200">
+                             {res ? (res.service || "Analyzing...") : "Tap to Scan"}
+                          </p>
+                       </div>
+                       <div className={cn("w-1.5 h-1.5 rounded-full mt-1", res ? (res.status === "open" ? "bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]" : "bg-red-500") : "bg-slate-300 dark:bg-white/10")} />
+                    </div>
+                    {res?.vulnerabilities?.map((v, i) => (
+                      <div key={i} className="px-2 py-1 rounded bg-red-500/10 border border-red-500/10 scale-90 origin-left">
+                         <span className="font-metric text-[8px] font-black leading-none text-red-500">{v.id}</span>
                       </div>
                     ))}
-                  </div>
-                )}
-              </motion.div>
-            );
-          })}
-        </div>
+                 </div>
+               );
+            })}
+         </div>
+      </section>
+    </div>
+  );
+}
 
-        {scanResults.length > 0 && (
-          <div className="mt-6 md:mt-8 p-3 md:p-4 rounded-xl bg-blue-600/5 border border-blue-600/10 flex items-center gap-3 md:gap-4">
-            <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-blue-600/20 flex items-center justify-center text-blue-500 shrink-0">
-              <Activity size={20} />
-            </div>
-            <div>
-              <h4 className="font-bold text-[11px] md:text-sm">Scan Summary</h4>
-              <p className="cyber-text-s">
-                Found {scanResults.filter(r => r.status === "open").length} open ports on {host}. 
-                {scanResults.filter(r => r.status === "open").length > 0 
-                  ? " Potential attack surface identified." 
-                  : " Host appears well-secured."}
-              </p>
-            </div>
+function MetricRow({ icon, label, active }: any) {
+  return (
+    <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/5">
+       <div className="flex items-center gap-2">
+          <div className={cn("p-1.5 rounded-md", active ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500")}>
+             {icon}
           </div>
-        )}
-      </div>
+          <span className="font-black text-[9px] uppercase tracking-wider text-slate-700 dark:text-slate-400">{label}</span>
+       </div>
+       <div className={cn("px-1.5 py-0.5 rounded-full text-[7px] font-black tracking-widest border uppercase", active ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" : "bg-red-500/10 border-red-500/20 text-red-500")}>
+          {active ? "Secure" : "Exposed"}
+       </div>
     </div>
   );
 }
