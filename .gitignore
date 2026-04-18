@@ -1,0 +1,10 @@
+.gradle/
+.gradle-user-home/
+local.properties
+app/build/
+build/
+.idea/
+*.iml
+backend/node_modules/
+.env
+backend/.env

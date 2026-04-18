@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TacU_NS FW Zero Trust Security</string>
+    <string name="dashboard_title">Zero-Trust Firewall</string>
+    <string name="dashboard_subtitle">Local-only Android firewall inspired by enterprise packet flow.</string>
+    <string name="protection_status">Protection Status</string>
+    <string name="start_protection">Start protection</string>
+    <string name="stop_protection">Stop protection</string>
+    <string name="allowed_label">Allowed</string>
+    <string name="blocked_label">Blocked</string>
+    <string name="total_events">Total Events</string>
+    <string name="dashboard_note">VPN mode captures traffic metadata, applies app and DNS rules, and stores local logs on device only.</string>
+    <string name="rules_title">Application Rules</string>
+    <string name="dns_title">DNS Filter Rules</string>
+    <string name="domain_hint">example.com</string>
+    <string name="add_domain_rule">Add domain rule</string>
+    <string name="logs_title">Firewall Logs</string>
+    <string name="clear_logs">Clear logs</string>
+    <string name="settings_title">Privacy and Support</string>
+    <string name="privacy_copy">TacU_NS FW Zero Trust Security stores rules and logs on device and can use TacU NS cloud reputation checks for domain safety classification. No user account is required.</string>
+    <string name="disclosure_copy">This release uses Android VpnService for local traffic handling. Queried domains may be sent to TacU NS threat services for Safe Browsing and OTX checks when remote reputation is enabled. This app is not affiliated with Palo Alto Networks.</string>
+    <string name="open_privacy_policy">Open privacy policy</string>
+    <string name="open_support">Open support page</string>
+    <string name="start_on_boot">Restart firewall after device reboot</string>
+    <string name="dashboard_tab">Dashboard</string>
+    <string name="rules_tab">Apps</string>
+    <string name="dns_tab">DNS</string>
+    <string name="logs_tab">Logs</string>
+    <string name="settings_tab">Settings</string>
+    <string name="allow">Allow</string>
+    <string name="block">Block</string>
+    <string name="delete_rule">Delete rule</string>
+    <string name="notification_title">Firewall protection active</string>
+    <string name="notification_message">Monitoring traffic and enforcing local rules.</string>
+    <string name="notification_channel_name">Firewall status</string>
+    <string name="vpn_session_name">TacU_NS Firewall VPN</string>
+    <string name="onboarding_title">Before protection starts</string>
+    <string name="onboarding_body">This app creates a local VPN interface to inspect traffic metadata on your device, apply app and DNS rules, and store security events.</string>
+    <string name="onboarding_disclosure_title">VPN and cloud disclosure</string>
+    <string name="onboarding_disclosure_body">TacU NS may send a domain under review to your own backend for Google Safe Browsing and OTX reputation checks. Publish matching privacy-policy language before release.</string>
+    <string name="onboarding_website_title">Support website</string>
+    <string name="onboarding_continue">Accept and continue</string>
+    <string-array name="firewall_actions">
+        <item>Allow</item>
+        <item>Block</item>
+    </string-array>
+</resources>
