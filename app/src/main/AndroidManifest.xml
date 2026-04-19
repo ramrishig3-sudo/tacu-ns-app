@@ -17,17 +17,17 @@
         android:theme="@style/Theme.TacuNsFwZeroTrustSecurity">
 
         <activity
-            android:name=".ui.onboarding.LaunchActivity"
-            android:exported="true">
+            android:name="com.sentinel.ui.SentinelActivity"
+            android:exported="true"
+            android:theme="@style/Theme.TacuNsFwZeroTrustSecurity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
         <activity
-            android:name=".ui.onboarding.OnboardingActivity"
+            android:name=".ui.onboarding.LaunchActivity"
             android:exported="false" />
 
         <activity
@@ -35,16 +35,17 @@
             android:exported="false" />
 
         <service
-            android:name=".vpn.FirewallVpnService"
+            android:name="com.sentinel.core.vpn.SentinelVpnService"
             android:enabled="true"
-            android:exported="false">
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
 
         <receiver
-            android:name=".receiver.BootReceiver"
+            android:name="com.sentinel.core.receiver.BootReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>

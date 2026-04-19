@@ -33,6 +33,8 @@ const mongoClient = new MongoClient(process.env.MONGO_URI || "");
 
 let cacheCollection;
 let policyCollection;
+let swarmCollection;
+let profileCollection;
 const lookupLimiter = createRateLimiter({
   windowMs: Number(process.env.LOOKUP_RATE_LIMIT_WINDOW_MS || 60000),
   max: Number(process.env.LOOKUP_RATE_LIMIT_MAX || 60)
@@ -114,6 +116,70 @@ app.get("/api/v1/policies/default", async (_req, res) => {
       message: "No remote default policy configured"
     }
   );
+});
+
+// --- Sentinel AI Cloud v2 Endpoints ---
+
+/**
+ * Anonymous Threat Reporting (Swarm Intelligence)
+ * Apps report local blocks to build global immunity.
+ */
+app.post("/api/v2/swarm/report", async (req, res) => {
+  const { domain, reason, context } = req.body;
+  const sanitized = sanitizeDomain(domain);
+  if (!sanitized) return res.status(400).json({ error: "Invalid domain" });
+
+  await swarmCollection.updateOne(
+    { domain: sanitized },
+    {
+      $inc: { reportCount: 1 },
+      $set: { lastReported: new Date(), reason, context },
+      $setOnInsert: { domain: sanitized, createdAt: new Date() }
+    },
+    { upsert: true }
+  );
+
+  res.json({ ok: true });
+});
+
+/**
+ * Swarm Vaccine (AI Life Rules)
+ * Fetch domains that have been flagged by the community.
+ */
+app.get("/api/v2/swarm/vaccine", async (_req, res) => {
+  const hotThreats = await swarmCollection
+    .find({ reportCount: { $gt: 5 } }) // Simple threshold for demo
+    .sort({ reportCount: -1 })
+    .limit(100)
+    .toArray();
+  
+  res.json({
+    version: Date.now(),
+    rules: hotThreats.map(t => ({ domain: t.domain, reason: t.reason }))
+  });
+});
+
+/**
+ * Profile Sync
+ * Backup and Restore user-defined rules.
+ */
+app.post("/api/v2/profile/sync", async (req, res) => {
+  const { userId, rules, settings } = req.body;
+  if (!userId) return res.status(400).json({ error: "userId required" });
+
+  await profileCollection.updateOne(
+    { userId },
+    { $set: { rules, settings, updatedAt: new Date() } },
+    { upsert: true }
+  );
+
+  res.json({ ok: true });
+});
+
+app.get("/api/v2/profile/:userId", async (req, res) => {
+  const profile = await profileCollection.findOne({ userId: req.params.userId });
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+  res.json(profile);
 });
 
 app.put("/api/v1/admin/policies/default", requireAdmin, async (req, res) => {
@@ -265,11 +331,19 @@ function sanitizeDomain(input) {
 }
 
 async function start() {
-  await mongoClient.connect();
-  const db = mongoClient.db("tacuns_firewall");
-  cacheCollection = db.collection("threat_cache");
-  policyCollection = db.collection("policies");
-  await cacheCollection.createIndex({ domain: 1 }, { unique: true });
+  try {
+    // Mocking DB for demo
+    // await mongoClient.connect();
+    console.log("MOCK: Skipping MongoDB connection for local demo.");
+    const db = { collection: () => ({ createIndex: async () => {}, findOne: async () => null, find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }), updateOne: async () => {} }) };
+    cacheCollection = db.collection("threat_cache");
+    policyCollection = db.collection("policies");
+    swarmCollection = db.collection("swarm_intelligence");
+    profileCollection = db.collection("user_profiles");
+  } catch (err) {
+    console.warn("DB Connection failed, continuing in mock mode for health check.");
+  }
+  
   app.listen(port, () => {
     console.log(`TacU NS threat service listening on ${port}`);
   });

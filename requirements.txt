@@ -1,0 +1,6 @@
+fastapi[all]
+uvicorn
+requests
+python-multipart
+# For Railway deployment
+gunicorn
