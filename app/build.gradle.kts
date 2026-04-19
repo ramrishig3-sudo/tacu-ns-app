@@ -4,6 +4,9 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+import java.util.Properties
+import java.io.FileInputStream
+
 android {
     namespace = "com.tacu.nsfwzerotrust"
     compileSdk = 34
@@ -15,14 +18,16 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        val localProperties = java.util.Properties().apply {
-            val file = rootProject.file("local.properties")
-            if (file.exists()) load(file.inputStream())
+        val localPropertiesFile = rootProject.file("local.properties")
+        val localProperties = Properties()
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use { localProperties.load(it) }
         }
 
         buildConfigField("String", "SENTINEL_BACKEND_URL", "\"${localProperties.getProperty("SENTINEL_BACKEND_URL") ?: "https://api.tacuns.net"}\"")
         buildConfigField("String", "SENTINEL_API_TOKEN", "\"${localProperties.getProperty("SENTINEL_API_TOKEN") ?: ""}\"")
         buildConfigField("String", "WEBSITE_BASE_URL", "\"https://www.tacuns.net\"")
+
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
