@@ -1,6 +1,8 @@
 fastapi[all]
 uvicorn
 requests
+aiohttp
 python-multipart
 # For Railway deployment
 gunicorn
+
