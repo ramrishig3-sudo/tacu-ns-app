@@ -38,22 +38,29 @@ const TYPES: { id: QRGenType; label: string; Icon: any; desc: string }[] = [
   { id: "text",     label: "Text",     Icon: FileText,      desc: "Content" },
 ];
 
-// ── QR Content Builder (logic unchanged) ─────────────────────────────
+// ── QR Content Builder ────────────────────────────────────────────────
 function buildQRContent(type: QRGenType, f: Record<string, string>): string {
-  const esc = (s: string) => s.replace(/[\\;,"]/g, v => `\\${v}`);
+  // WiFi QR spec requires escaping \ ; , " and : in SSID/password fields
+  const esc = (s: string) => s.replace(/[\\;,"':]/g, v => `\\${v}`);
   switch (type) {
-    case "url": return f.url?.trim() || "";
+    case "url": {
+      const u = f.url?.trim() || "";
+      if (!u) return "";
+      // Auto-prefix https:// so scanners open a browser instead of showing plain text
+      return /^https?:\/\//i.test(u) ? u : `https://${u}`;
+    }
     case "wifi":
       if (!f.ssid?.trim()) return "";
       return `WIFI:T:${f.security || "WPA"};S:${esc(f.ssid)};P:${esc(f.password || "")};;`;
     case "vcard": {
       if (!f.name?.trim() && !f.phone?.trim()) return "";
-      let v = "BEGIN:VCARD\nVERSION:3.0\n";
-      if (f.name)  v += `FN:${f.name}\n`;
-      if (f.phone) v += `TEL:${f.phone}\n`;
-      if (f.email) v += `EMAIL:${f.email}\n`;
-      if (f.org)   v += `ORG:${f.org}\n`;
-      if (f.url)   v += `URL:${f.url}\n`;
+      // vCard spec (RFC 2426) requires CRLF line endings — \n alone breaks strict parsers
+      let v = "BEGIN:VCARD\r\nVERSION:3.0\r\n";
+      if (f.name)  v += `FN:${f.name}\r\n`;
+      if (f.phone) v += `TEL:${f.phone}\r\n`;
+      if (f.email) v += `EMAIL:${f.email}\r\n`;
+      if (f.org)   v += `ORG:${f.org}\r\n`;
+      if (f.url)   v += `URL:${f.url}\r\n`;
       return v + "END:VCARD";
     }
     case "whatsapp": {

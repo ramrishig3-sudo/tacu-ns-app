@@ -3,14 +3,14 @@ import { BrowserQRCodeReader } from "@zxing/browser";
 import {
   QrCode, Camera, X, ShieldAlert, ShieldCheck, AlertTriangle,
   Loader2, Search, RefreshCw, Globe, FileText, Phone,
-  Mail, User, IndianRupee, CheckCircle2, ChevronDown, ChevronUp
+  Mail, User, IndianRupee, CheckCircle2, ChevronDown, ChevronUp, Wifi
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../../lib/utils";
 import apiClient from "../../services/api";
 
 type ScanState = "idle" | "scanning" | "detected" | "analyzing" | "result";
-type QRType = "url" | "upi" | "contact" | "email" | "phone" | "text";
+type QRType = "url" | "upi" | "contact" | "email" | "phone" | "text" | "wifi";
 type RiskLevel = "safe" | "suspicious" | "danger";
 
 interface ParsedQR {
@@ -26,6 +26,9 @@ interface ParsedQR {
   ref?: string;
   contactName?: string;
   contactPhone?: string;
+  wifiSsid?: string;
+  wifiSecurity?: string;
+  wifiPassword?: string;
 }
 
 interface SecurityResult {
@@ -75,6 +78,18 @@ function parseQR(raw: string): ParsedQR {
       type: "contact", raw: text, label: "Contact Card",
       contactName:  text.match(/^FN:(.*)/im)?.[1]?.trim() || "",
       contactPhone: text.match(/^TEL[^:]*:(.*)/im)?.[1]?.trim() || "",
+    };
+  }
+
+  if (/^WIFI:/i.test(text)) {
+    const unesc = (s: string) => s.replace(/\\([\\;,":])/, "$1");
+    const get = (key: string) => {
+      const m = text.match(new RegExp(`(?:^|;)${key}:((?:[^;\\\\]|\\\\.)*)`, "i"));
+      return m ? unesc(m[1]) : "";
+    };
+    return {
+      type: "wifi", raw: text, label: "WiFi Network",
+      wifiSsid: get("S"), wifiSecurity: get("T"), wifiPassword: get("P"),
     };
   }
 
@@ -163,8 +178,10 @@ const AMBER_BDR = "rgba(252,211,77,0.22)";
 
 // ─────────────────────────────────────────────────────────────────────
 export default function QRScanner() {
-  const videoRef     = useRef<HTMLVideoElement>(null);
-  const controlsRef  = useRef<any>(null);
+  const videoRef  = useRef<HTMLVideoElement>(null);
+  const readerRef = useRef<BrowserQRCodeReader | null>(null);
+  const isMounted = useRef(true);
+  useEffect(() => () => { isMounted.current = false; }, []);
   const [scanState,    setScanState]    = useState<ScanState>("idle");
   const [detectedText, setDetectedText] = useState("");
   const [manualInput,  setManualInput]  = useState("");
@@ -174,34 +191,35 @@ export default function QRScanner() {
   const [demoOpen,     setDemoOpen]     = useState(false);
 
   const stopScan = useCallback(() => {
-    try { controlsRef.current?.stop?.(); } catch {}
-    controlsRef.current = null;
+    try { readerRef.current?.reset?.(); } catch {}
+    readerRef.current = null;
   }, []);
 
   useEffect(() => () => stopScan(), [stopScan]);
 
   const startScan = useCallback(async () => {
+    stopScan();
     setErrorMsg(""); setDetectedText(""); setParsed(null); setSecurity(null);
     setScanState("scanning");
     try {
       const reader = new BrowserQRCodeReader();
-      const controls = await reader.decodeFromVideoDevice(
-        undefined,
-        videoRef.current!,
-        (res: any, _err: any, ctrl: any) => {
-          if (res) {
-            ctrl.stop(); controlsRef.current = null;
-            setDetectedText(res.getText());
-            setScanState("detected");
-          }
-        }
-      );
-      controlsRef.current = controls;
-    } catch {
-      setErrorMsg("Camera permission denied. Use the paste field below instead.");
+      readerRef.current = reader;
+      const result = await reader.decodeOnceFromVideoDevice(undefined, videoRef.current!);
+      if (!isMounted.current) return;
+      readerRef.current = null;
+      setDetectedText(result.getText());
+      setScanState("detected");
+    } catch (err: any) {
+      if (!isMounted.current) return;
+      readerRef.current = null;
+      if (err?.name === "NotAllowedError" || err?.message?.toLowerCase().includes("permission")) {
+        setErrorMsg("Camera permission denied. Use the paste field below instead.");
+      } else {
+        setErrorMsg("Could not detect a QR code. Hold the camera steady and try again.");
+      }
       setScanState("idle");
     }
-  }, []);
+  }, [stopScan]);
 
   const cancelScan = useCallback(() => { stopScan(); setScanState("idle"); }, [stopScan]);
 
@@ -229,8 +247,27 @@ export default function QRScanner() {
       return;
     }
 
+    if (p.type === "wifi") {
+      const net = p.wifiSsid || "this network";
+      const sec = p.wifiSecurity || "unknown";
+      const warnings: string[] = [];
+      if (sec.toUpperCase() === "nopass" || sec === "") warnings.push("Open network — no password required, traffic is unencrypted");
+      if (sec.toUpperCase() === "WEP") warnings.push("WEP security is broken and easily cracked — avoid connecting");
+      setSecurity({
+        risk: warnings.length > 0 ? "suspicious" : "safe",
+        warnings,
+        explanation: warnings.length > 0
+          ? `This QR connects to "${net}" using ${sec} security. ${warnings[0]}. Only connect if you trust the network owner.`
+          : `This QR connects to the "${net}" network (${sec} security). Only scan and join networks from people or places you trust — the network owner can see your traffic.`,
+        domainAgeDays: null, exposedPorts: [], vulnIds: [], threatIndicators: 0,
+      });
+      setScanState("result");
+      return;
+    }
+
     try {
       const res = await apiClient.post("/api/scan-threat", { target: text });
+      if (!isMounted.current) return;
       if (res.data.success) {
         setSecurity(buildSecurity(res.data.data, p));
         setScanState("result");
@@ -239,6 +276,7 @@ export default function QRScanner() {
         setScanState("detected");
       }
     } catch {
+      if (!isMounted.current) return;
       setErrorMsg("Analysis server unreachable. Check your connection.");
       setScanState("detected");
     }
@@ -452,6 +490,7 @@ function QRDetailsCard({ parsed }: { parsed: ParsedQR }) {
     email:   { color:"#FCD34D", bg:"rgba(252,211,77,0.08)",  border:"rgba(252,211,77,0.2)",  Icon: Mail },
     phone:   { color:"#34D399", bg:"rgba(52,211,153,0.08)",  border:"rgba(52,211,153,0.2)",  Icon: Phone },
     text:    { color:"#94A3B8", bg:"rgba(148,163,184,0.08)", border:"rgba(148,163,184,0.2)", Icon: FileText },
+    wifi:    { color:"#C084FC", bg:"rgba(192,132,252,0.08)", border:"rgba(192,132,252,0.2)", Icon: Wifi },
   };
   const cfg = typeConfig[parsed.type];
 
@@ -494,6 +533,14 @@ function QRDetailsCard({ parsed }: { parsed: ParsedQR }) {
         {parsed.type === "contact" && <>
           {parsed.contactName  && <DetailRow label="Name"  value={parsed.contactName}/>}
           {parsed.contactPhone && <DetailRow label="Phone" value={parsed.contactPhone} mono/>}
+        </>}
+
+        {parsed.type === "wifi" && <>
+          {parsed.wifiSsid     && <DetailRow label="Network"  value={parsed.wifiSsid}/>}
+          {parsed.wifiSecurity && <DetailRow label="Security" value={parsed.wifiSecurity.toUpperCase()}
+            highlight={parsed.wifiSecurity.toUpperCase() === "WEP" || parsed.wifiSecurity.toLowerCase() === "nopass"}
+            highlightMsg={parsed.wifiSecurity.toUpperCase() === "WEP" ? "Broken encryption" : "Open — no password"}/>}
+          {parsed.wifiPassword && <DetailRow label="Password" value={parsed.wifiPassword} mono/>}
         </>}
 
         {(parsed.type === "email" || parsed.type === "phone" || parsed.type === "text") && (
