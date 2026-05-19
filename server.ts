@@ -39,7 +39,6 @@ async function startServer() {
         origin.startsWith("ionic://") ||
         origin.startsWith("http://localhost") ||
         origin.startsWith("https://localhost") ||
-        origin.includes("railway.app") ||
         origin.includes("tacuns.net");
       callback(null, allowed ? true : false);
     },
@@ -149,10 +148,64 @@ async function startServer() {
         }
       }
 
+      // ── Shodan InternetDB (free, no auth) ───────────────
+      let shodanPorts: number[] = [];
+      let shodanVulns: string[] = [];
+      let shodanHostnames: string[] = [];
+      let shodanTags: string[] = [];
+
+      if (targetType === "ip" && isValidIPv4(target)) {
+        const isPrivate = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|169\.254\.)/.test(target);
+        if (!isPrivate) {
+          try {
+            const shodanRes = await axios.get(`https://internetdb.shodan.io/${target}`, { timeout: 8000 });
+            shodanPorts     = shodanRes.data.ports     || [];
+            shodanVulns     = shodanRes.data.vulns     || [];
+            shodanHostnames = (shodanRes.data.hostnames || []).slice(0, 5);
+            shodanTags      = shodanRes.data.tags      || [];
+          } catch (err: any) {
+            console.warn("[Shodan] InternetDB failed:", err.message);
+          }
+        }
+      }
+
+      // ── Domain Age via RDAP (free, no auth) ─────────────
+      let domainAgeDays: number | null = null;
+      let domainRegistrar = "";
+
+      let domainToCheck = "";
+      if (targetType === "domain") domainToCheck = target;
+      else if (targetType === "url") {
+        try { domainToCheck = new URL(target).hostname; } catch {}
+      }
+
+      if (domainToCheck) {
+        try {
+          const rdapRes = await axios.get(`https://rdap.org/domain/${domainToCheck}`, {
+            timeout: 10000, maxRedirects: 5, headers: { Accept: "application/json" }
+          });
+          const events = rdapRes.data?.events || [];
+          const regEvent = events.find((e: any) => e.eventAction === "registration");
+          if (regEvent?.eventDate) {
+            domainAgeDays = Math.floor((Date.now() - new Date(regEvent.eventDate).getTime()) / 86400000);
+          }
+          for (const entity of (rdapRes.data?.entities || [])) {
+            if ((entity.roles || []).includes("registrar")) {
+              const fn = (entity.vcardArray?.[1] || []).find((v: any) => Array.isArray(v) && v[0] === "fn");
+              if (fn) { domainRegistrar = fn[3] || ""; break; }
+            }
+          }
+        } catch (err: any) {
+          console.warn("[RDAP] Domain age check failed:", err.message);
+        }
+      }
+
       // ── Compute Risk Level ──────────────────────────────
       let riskLevel = "low";
-      if (vtMalicious > 0 || otxHits > 5) riskLevel = "high";
+      if (vtMalicious > 0 || otxHits > 5 || shodanVulns.length > 0) riskLevel = "high";
       else if (vtSuspicious > 0 || otxHits > 0) riskLevel = "medium";
+      if (domainAgeDays !== null && domainAgeDays < 30 && vtMalicious > 0) riskLevel = "high";
+      else if (domainAgeDays !== null && domainAgeDays < 7 && riskLevel === "low") riskLevel = "medium";
 
       const result = {
         target,
@@ -162,6 +215,12 @@ async function startServer() {
         vt_suspicious: vtSuspicious,
         vt_reputation: vtReputation,
         otx_hits: otxHits,
+        shodan_ports: shodanPorts,
+        shodan_vulns: shodanVulns,
+        shodan_hostnames: shodanHostnames,
+        shodan_tags: shodanTags,
+        domain_age_days: domainAgeDays,
+        domain_registrar: domainRegistrar,
         cached: false,
         created_at: new Date().toISOString(),
       };
@@ -657,6 +716,331 @@ Your goal is to help users identify threats and provide actionable security reco
     res.json({ success: true, received: req.headers["content-length"] });
   });
 
+  // =================================================================
+  // IP Deep Intelligence
+  // Sources per multi-vector analysis methodology:
+  //   ipinfo.io     — Geolocation, ASN, ISP (free, no auth)
+  //   Shodan InternetDB — Open ports, CVEs, hostnames (free, no auth)
+  //   GreyNoise Community v3 — Behavioral classification (free, unauthenticated)
+  //   AbuseIPDB v2  — Abuse confidence score (requires ABUSEIPDB_API_KEY)
+  // Ref: https://docs.greynoise.io/reference/get_v3-community-ip
+  // Ref: https://docs.abuseipdb.com/#check-endpoint
+  // =================================================================
+  app.get("/api/ip-intel/:ip", async (req, res) => {
+    const ip = sanitize(req.params.ip);
+
+    if (!isValidIPv4(ip)) {
+      return res.status(400).json({ success: false, error: "Valid public IPv4 address required" });
+    }
+
+    const isPrivate = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|169\.254\.|0\.)/.test(ip);
+    if (isPrivate) {
+      return res.status(400).json({ success: false, error: "Private or reserved IP — not externally routable" });
+    }
+
+    const cacheKey = `ip_intel_${ip}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json({ success: true, data: { ...cached, cached: true } });
+
+    try {
+      // ── 1. ipinfo.io — Geolocation + ASN/ISP (free, no auth) ──────────────
+      let geo: Record<string, string> = {};
+      try {
+        const token = process.env.IPINFO_TOKEN;
+        const url = token
+          ? `https://ipinfo.io/${ip}/json?token=${token}`
+          : `https://ipinfo.io/${ip}/json`;
+        const r = await axios.get(url, { timeout: 8000 });
+        geo = r.data || {};
+      } catch (e: any) { console.warn("[ipinfo] failed:", e.message); }
+
+      // ── 2. Shodan InternetDB — Attack surface (free, no auth) ─────────────
+      let shodanPorts: number[] = [];
+      let shodanCves: string[] = [];
+      let shodanHostnames: string[] = [];
+      let shodanTags: string[] = [];
+      try {
+        const r = await axios.get(`https://internetdb.shodan.io/${ip}`, { timeout: 8000 });
+        shodanPorts     = r.data.ports     || [];
+        shodanCves      = r.data.vulns     || [];
+        shodanHostnames = (r.data.hostnames || []).slice(0, 5);
+        shodanTags      = r.data.tags      || [];
+      } catch (e: any) { console.warn("[Shodan InternetDB] failed:", e.message); }
+
+      // ── 3. GreyNoise Community v3 — Behavioral classification ──────────────
+      // Endpoint: GET https://api.greynoise.io/v3/community/{ip}
+      // Fields: noise (internet scanner), riot (known benign), classification
+      let gnNoise = false, gnRiot = false;
+      let gnClassification = "unknown", gnName = "", gnLastSeen = "";
+      try {
+        const r = await axios.get(`https://api.greynoise.io/v3/community/${ip}`, { timeout: 8000 });
+        gnNoise          = r.data.noise === true;
+        gnRiot           = r.data.riot  === true;
+        gnClassification = r.data.classification || "unknown";
+        gnName           = r.data.name     || "";
+        gnLastSeen       = r.data.last_seen || "";
+      } catch (e: any) {
+        if ((e as any).response?.status !== 404) console.warn("[GreyNoise] failed:", e.message);
+      }
+
+      // ── 4. AbuseIPDB v2 — Abuse history (requires ABUSEIPDB_API_KEY) ───────
+      // Endpoint: GET https://api.abuseipdb.com/api/v2/check
+      // Headers: Key: <apiKey>, Accept: application/json
+      let abuseScore = 0, abuseReports = 0, abuseLastReported = "", abuseIsp = "";
+      const abuseHasKey = !!process.env.ABUSEIPDB_API_KEY;
+      if (abuseHasKey) {
+        try {
+          const r = await axios.get("https://api.abuseipdb.com/api/v2/check", {
+            params: { ipAddress: ip, maxAgeInDays: 90 },
+            headers: { Key: process.env.ABUSEIPDB_API_KEY!, Accept: "application/json" },
+            timeout: 10000,
+          });
+          const d = r.data?.data || {};
+          abuseScore        = d.abuseConfidenceScore || 0;
+          abuseReports      = d.totalReports         || 0;
+          abuseLastReported = d.lastReportedAt        || "";
+          abuseIsp          = d.isp                   || "";
+        } catch (e: any) { console.warn("[AbuseIPDB] failed:", e.message); }
+      }
+
+      // ── Risk level (multi-source correlation) ─────────────────────────────
+      let riskLevel: "critical" | "high" | "medium" | "low" = "low";
+      if (abuseScore > 75 || gnClassification === "malicious" || shodanCves.length > 3) {
+        riskLevel = "critical";
+      } else if (abuseScore > 25 || shodanCves.length > 0) {
+        riskLevel = "high";
+      } else if (abuseScore > 0 || abuseReports > 0 || gnNoise) {
+        riskLevel = "medium";
+      }
+
+      const result = {
+        ip,
+        hostname:     geo.hostname  || shodanHostnames[0] || "",
+        city:         geo.city      || "",
+        region:       geo.region    || "",
+        country:      geo.country   || "",
+        org:          geo.org       || abuseIsp || "",
+        timezone:     geo.timezone  || "",
+        open_ports:   shodanPorts,
+        cves:         shodanCves,
+        hostnames:    shodanHostnames,
+        tags:         shodanTags,
+        gn_noise:           gnNoise,
+        gn_riot:            gnRiot,
+        gn_classification:  gnClassification,
+        gn_name:            gnName,
+        gn_last_seen:       gnLastSeen,
+        abuse_score:        abuseScore,
+        abuse_reports:      abuseReports,
+        abuse_last_reported: abuseLastReported,
+        abuse_has_key:      abuseHasKey,
+        risk_level:   riskLevel,
+        cached:       false,
+        analyzed_at:  new Date().toISOString(),
+      };
+
+      setCache(cacheKey, result, 1800000); // 30-min cache
+      return res.json({ success: true, data: result });
+
+    } catch (e: any) {
+      console.error("[ip-intel] error:", e.message);
+      return res.status(500).json({ success: false, error: "Analysis failed" });
+    }
+  });
+
+  // =================================================================
+  // File Hash Lookup — Step 7
+  // Sources:
+  //   CIRCL HASHLOOKUP — crowd-sourced malware hash database (free, no auth)
+  //   VirusTotal v3    — multi-engine file reputation (VIRUSTOTAL_API_KEY)
+  // Accepts: MD5 (32 hex), SHA1 (40 hex), SHA256 (64 hex)
+  // Ref: https://hashlookup.circl.lu  | https://docs.virustotal.com/reference/files
+  // =================================================================
+  app.get("/api/hash-lookup/:hash", async (req, res) => {
+    const raw = sanitize(req.params.hash).toLowerCase();
+
+    const hashType =
+      /^[0-9a-f]{32}$/.test(raw) ? "md5"
+      : /^[0-9a-f]{40}$/.test(raw) ? "sha1"
+      : /^[0-9a-f]{64}$/.test(raw) ? "sha256"
+      : null;
+
+    if (!hashType) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid hash. Paste an MD5 (32 chars), SHA1 (40 chars) or SHA256 (64 chars) hex hash.",
+      });
+    }
+
+    const cacheKey = `hash_${raw}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json({ success: true, data: { ...cached, cached: true } });
+
+    const result: Record<string, any> = {
+      hash: raw,
+      hash_type: hashType.toUpperCase(),
+      verdict: "unknown",          // "known_malware" | "clean" | "unknown"
+      malware_name: null as string | null,
+      malware_family: null as string | null,
+      detection_count: 0,
+      total_engines: 0,
+      circl_found: false,
+      vt_found: false,
+      vt_has_key: !!process.env.VIRUSTOTAL_API_KEY,
+      cached: false,
+      analyzed_at: new Date().toISOString(),
+    };
+
+    // ── 1. CIRCL HASHLOOKUP — free, no auth needed ──────────────────────────
+    // CIRCL stores hashes of ALL known files (NSRL + malware DBs).
+    // "Found" only means the file is known — NOT necessarily malicious.
+    // Only treat as malware if the ClamAV antivirus field has a signature.
+    try {
+      const r = await axios.get(
+        `https://hashlookup.circl.lu/lookup/${hashType}/${raw}`,
+        { timeout: 8000 }
+      );
+      if (r.data && !r.data.message) {
+        result.circl_found = true;
+        const clamSig = r.data["ClamAV"] || null;
+        if (clamSig) {
+          // Confirmed malware signature in CIRCL
+          result.verdict        = "known_malware";
+          result.malware_name   = r.data["FileName"] || r.data["FileName-from-DB"] || null;
+          result.malware_family = clamSig;
+        }
+        // No ClamAV sig → file is known (safe) — verdict left for VT to decide
+      }
+    } catch (e: any) {
+      if (e.response?.status !== 404) {
+        console.warn("[CIRCL HASHLOOKUP] failed:", e.message);
+      }
+    }
+
+    // ── 2. VirusTotal v3 — multi-engine reputation (authoritative verdict) ───
+    const vtKey = process.env.VIRUSTOTAL_API_KEY;
+    if (vtKey) {
+      try {
+        const r = await axios.get(
+          `https://www.virustotal.com/api/v3/files/${raw}`,
+          { headers: { "x-apikey": vtKey }, timeout: 12000 }
+        );
+        const attrs = r.data?.data?.attributes || {};
+        const stats = attrs.last_analysis_stats || {};
+        const malicious = (stats.malicious || 0) + (stats.suspicious || 0);
+        const total     = Object.values(stats as Record<string, number>).reduce((a, b) => a + b, 0);
+
+        result.vt_found        = true;
+        result.detection_count = malicious;
+        result.total_engines   = total;
+
+        if (malicious > 0) {
+          // VT confirms malicious — override any CIRCL result
+          result.verdict = "known_malware";
+          if (!result.malware_name) result.malware_name = attrs.meaningful_name || attrs.name || null;
+          if (!result.malware_family) {
+            const cls   = attrs.popular_threat_classification;
+            const names = cls?.popular_threat_name as Array<{ value: string }> | undefined;
+            result.malware_family = names?.[0]?.value ?? null;
+          }
+        } else {
+          // VT scanned it and zero engines flagged it → clean regardless of CIRCL
+          result.verdict = "clean";
+        }
+      } catch (e: any) {
+        if (e.response?.status !== 404) {
+          console.warn("[VirusTotal] hash lookup failed:", e.message);
+        }
+      }
+    }
+
+    setCache(cacheKey, result, 3600000); // 1-hour cache
+    return res.json({ success: true, data: result });
+  });
+
+  // =================================================================
+  // Dark Web Breach Check — Step 8
+  // Sources:
+  //   EmailRep.io  — email reputation + credential leak indicator (free, no auth)
+  //   HIBP v3      — full breach list per email (requires HIBP_API_KEY, $3.50/mo)
+  // Ref: https://emailrep.io  | https://haveibeenpwned.com/API/v3
+  // POST so email never appears in server access logs or CDN cache keys
+  // =================================================================
+  app.post("/api/breach-check", async (req, res) => {
+    const raw = (req.body?.email || "").toString().trim().toLowerCase();
+
+    if (!raw || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+      return res.status(400).json({ success: false, error: "Valid email address required" });
+    }
+
+    const cacheKey = `breach_${raw}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json({ success: true, data: { ...cached, cached: true } });
+
+    const result: Record<string, any> = {
+      email: raw,
+      breached: false,
+      breach_count: 0,
+      breaches: [] as any[],
+      rep_reputation: "",
+      rep_credentials_leaked: false,
+      rep_data_breach: false,
+      rep_blacklisted: false,
+      rep_malicious: false,
+      hibp_has_key: !!process.env.HIBP_API_KEY,
+      cached: false,
+      checked_at: new Date().toISOString(),
+    };
+
+    // ── 1. EmailRep.io — email reputation (free, no auth required) ───────────
+    // Returns: reputation score, credential_leaked flag, data_breach flag.
+    // Free tier: 10 requests/day without key; raises to 1000/day with free key.
+    try {
+      const r = await axios.get(`https://emailrep.io/${encodeURIComponent(raw)}`, {
+        headers: { "User-Agent": "TacU-NS-SecurityApp/1.0" },
+        timeout: 8000,
+      });
+      const d = r.data || {};
+      const details = d.details || {};
+      result.rep_reputation        = d.reputation    || "unknown";
+      result.rep_credentials_leaked = !!details.credentials_leaked;
+      result.rep_data_breach        = !!details.data_breach;
+      result.rep_blacklisted        = !!details.blacklisted;
+      result.rep_malicious          = !!details.malicious_activity;
+      if (details.credentials_leaked || details.data_breach) {
+        result.breached = true;
+      }
+    } catch (e: any) {
+      console.warn("[EmailRep] failed:", e.message);
+    }
+
+    // ── 2. HIBP v3 — if key is ever added, upgrades to named breach list ────────
+    const hibpKey = process.env.HIBP_API_KEY;
+    if (hibpKey) {
+      try {
+        const r = await axios.get(
+          `https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(raw)}`,
+          { headers: { "hibp-api-key": hibpKey, "User-Agent": "TacU-NS-SecurityApp/1.0" }, timeout: 12000 }
+        );
+        if (Array.isArray(r.data) && r.data.length > 0) {
+          result.breached     = true;
+          result.breach_count = r.data.length;
+          result.breaches     = r.data
+            .map((b: any) => ({
+              name: b.Name, domain: b.Domain, breach_date: b.BreachDate,
+              pwn_count: b.PwnCount, data_classes: b.DataClasses || [], is_verified: b.IsVerified,
+            }))
+            .sort((a: any, b: any) => new Date(b.breach_date).getTime() - new Date(a.breach_date).getTime());
+        }
+      } catch (e: any) {
+        if ((e as any).response?.status !== 404) console.warn("[HIBP] failed:", e.message);
+      }
+    }
+
+    setCache(cacheKey, result, 300000);
+    return res.json({ success: true, data: result });
+  });
+
   // --- Vite Middleware ---
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -667,7 +1051,7 @@ Your goal is to help users identify threats and provide actionable security reco
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get(/^\/(?!api).*$/, (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

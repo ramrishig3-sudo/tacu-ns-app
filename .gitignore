@@ -27,3 +27,7 @@ google-services.json
 .vscode/
 *.swp
 *.swo
+
+# Local tool state (never commit)
+.claude/
+.refact/

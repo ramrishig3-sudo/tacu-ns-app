@@ -1,38 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Network Security Config for TacU-NS Android App
-    Allows the Capacitor WebView to communicate with the Railway backend.
-    Android 9 (API 28)+ restricts cleartext traffic by default.
+
+    Policy:
+    - All external public traffic: HTTPS only (base-config)
+    - Production backend (tacuns.net): HTTPS + certificate pinning
+
+    NOTE: LanScanPlugin uses raw Java sockets / ARP — these are NOT HTTP
+    connections and are NOT governed by this config. No cleartext exception
+    is needed for LAN scanning.
+
+    Android NSC does not support IP addresses in <domain> elements (only
+    hostnames are valid). The previously listed RFC-1918 IP entries had no
+    effect and have been removed.
+
+    Pin renewal reminder: cert expires 2026-08-03. Regenerate SPKI pin with:
+      echo | openssl s_client -connect api.tacuns.net:443 2>/dev/null \
+        | openssl x509 -pubkey -noout \
+        | openssl pkey -pubin -outform der \
+        | openssl dgst -sha256 -binary | base64
 -->
 <network-security-config>
+
+    <!-- Default: HTTPS only for all public hosts -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
-            <!-- Trust the system's built-in CA certificates (covers railway.app, ipinfo.io, etc.) -->
             <certificates src="system" />
         </trust-anchors>
     </base-config>
 
-    <!-- Explicitly trust the Railway production backend -->
+    <!-- Production backend: HTTPS + certificate pinning -->
     <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">railway.app</domain>
+        <domain includeSubdomains="true">tacuns.net</domain>
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
+        <pin-set expiration="2026-08-01">
+            <!-- api.tacuns.net leaf cert SPKI SHA-256 (Let's Encrypt, expires 2026-08-03) -->
+            <pin digest="SHA-256">TEWN3I6ckQB9l8rXRpqF8TaQwlGuQLFRXVQMHtsAMss=</pin>
+            <!-- Let's Encrypt R13 intermediate backup pin -->
+            <pin digest="SHA-256">jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=</pin>
+        </pin-set>
     </domain-config>
 
-    <!-- Allow local dev server if needed during development -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">10.0.2.2</domain>
-    </domain-config>
-
-    <!-- Allow common IP discovery APIs for fallbacks -->
-    <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">api.ipify.org</domain>
-        <domain includeSubdomains="true">ipinfo.io</domain>
-        <domain includeSubdomains="true">ipapi.co</domain>
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </domain-config>
 </network-security-config>

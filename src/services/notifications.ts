@@ -44,8 +44,6 @@ export async function initPushNotifications() {
 
     // Listen for registration success
     PushNotifications.addListener("registration", async (token: { value: string }) => {
-      console.log("[Push] Registered with token:", token.value);
-      // Store token in Supabase for backend to use
       await registerDeviceToken(token.value);
     });
 
@@ -54,25 +52,8 @@ export async function initPushNotifications() {
       console.error("[Push] Registration error:", error);
     });
 
-    // Listen for incoming notifications (foreground)
-    PushNotifications.addListener(
-      "pushNotificationReceived",
-      (notification: any) => {
-        console.log("[Push] Notification received:", notification);
-        // You can show an in-app alert here
-      }
-    );
-
-    // Listen for notification tap (background/killed)
-    PushNotifications.addListener(
-      "pushNotificationActionPerformed",
-      (action: any) => {
-        console.log("[Push] Notification action:", action);
-        // Navigate to threat detail screen
-      }
-    );
-
-    console.log("[Push] Notifications initialized");
+    PushNotifications.addListener("pushNotificationReceived", (_notification: any) => {});
+    PushNotifications.addListener("pushNotificationActionPerformed", (_action: any) => {});
   } catch (err) {
     console.error("[Push] Init error:", err);
   }
@@ -90,12 +71,11 @@ export async function createNotificationChannel() {
       id: "threat_alerts",
       name: "Threat Alerts",
       description: "Notifications for detected security threats",
-      importance: 5, // MAX
-      visibility: 1, // PUBLIC
+      importance: 5,
+      visibility: 1,
       vibration: true,
       sound: "default",
     });
-    console.log("[Push] Notification channel created");
   } catch (err) {
     console.warn("[Push] Channel creation not supported:", err);
   }

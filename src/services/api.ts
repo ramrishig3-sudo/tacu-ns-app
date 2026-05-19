@@ -7,7 +7,7 @@
  * 2. Consistent error handling
  * 3. Request timeouts
  *
- * IMPORTANT: The Railway URL is hardcoded as the production fallback.
+ * IMPORTANT: The production API URL is hardcoded as the fallback.
  * This ensures the Android APK always has a valid backend URL even if
  * VITE_API_BASE_URL was not available at build time.
  */
@@ -21,9 +21,8 @@ let API_BASE = PRODUCTION_API;
 
 if (typeof window !== "undefined") {
   const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  if (isLocal) {
+  if (isLocal && import.meta.env.DEV) {
     API_BASE = "http://localhost:3000";
-    console.warn(`%c[SECURITY] Running in LOCAL mode. Connecting to development node: ${API_BASE}`, "color: #3b82f6; font-weight: bold;");
   }
 }
 
